@@ -300,7 +300,7 @@ function Start-Core {
         $NVFound    = ($Global:DeviceCache.AllDevices | Where-Object {$_.Type -eq "GPU" -and $_.Vendor -eq "NVIDIA"} | Measure-Object).Count
         $AMDFound   = ($Global:DeviceCache.AllDevices | Where-Object {$_.Type -eq "GPU" -and $_.Vendor -eq "AMD"} | Measure-Object).Count
         $INTELFound = ($Global:DeviceCache.AllDevices | Where-Object {$_.Type -eq "GPU" -and $_.Vendor -eq "INTEL"} | Measure-Object).Count
-        if ($CPUsFound -or $NVFound -or $AMDFound -or $INTELFound) {
+        if ($CPUFound -or $NVFound -or $AMDFound -or $INTELFound) {
             $DevicesFound = @()
             if ($CPUFound)   {$DevicesFound += "$($CPUFound) CPU"}
             if ($NVFound)    {$DevicesFound += "$($NVFound) Nvidia"}
@@ -778,6 +778,7 @@ function Invoke-Core {
             }
         }
         $Session.Config.Currency = @($Session.Config.Currency | ForEach-Object {$_.ToUpper()} | Where-Object {$_})
+        if ($Session.Config.Currency -notcontains "BTC") {$Session.Config.Currency += "BTC"}
         $Session.Config.UIstyle = if ($Session.Config.UIstyle -like "f*") {"full"} else {"lite"}
         $Session.Config.UIsorting = if ($Session.Config.UIsorting -like "p*") {"profit"} else {"biased"}
         $Session.Config.PowerPriceCurrency = $Session.Config.PowerPriceCurrency | ForEach-Object {$_.ToUpper()}
