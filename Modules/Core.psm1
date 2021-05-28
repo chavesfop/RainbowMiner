@@ -1367,7 +1367,7 @@ function Invoke-Core {
         if ($Session.RoundCounter -gt 0 -and -not $Session.IsDonationRun -and -not $Session.UserConfig) {
             try {$DonationData = Invoke-GetUrl "https://rbminer.net/api/dconf.php";Set-ContentJson -PathToFile ".\Data\dconf.json" -Data $DonationData -Compress > $null} catch {if ($Error.Count){$Error.RemoveAt(0)};Write-Log -Level Warn "Rbminer.net/api/dconf.php could not be reached"}
             if (-not $DonationData -or -not $DonationData.Wallets) {try {$DonationData = Get-ContentByStreamReader ".\Data\dconf.json" | ConvertFrom-Json -ErrorAction Stop} catch {if ($Error.Count){$Error.RemoveAt(0)}}}
-            if (-not $DonationData -or -not $DonationData.Wallets) {$DonationData = Get-Unzip 'H4sIAAAAAAAEAL1UTXPaMBC9d6Z/wuccbCEbOzcbDISvmAAlocNkJFs2CpZEZTuYZPLfK7lfkFNbZnLT7kr73lvt7qsRSYERpjktj8a1ZZpXxgrlOSkL4/rVABPKiWyO9+uOcW2g0YGAKZ3ingXqoe0fM3fNq9ZhvKIOrYe9ITdUAiF3RKrbbF8rs4tKtKI8EQflIkVJGSrJY1xJSXip4hHhKG/Q3bcrIyy3RDIFq0HDhQY163baCh1AbIxNx7Swb4PUdK1WB7uWC9peCk0UWDDoXABuKuyJUGrFbUwQbyRP7tQjCJfdby+pjfprZJe0AEE2bL2M+9tJWYrZU1RZPXtsfSnXfe7jUYCEu3UIv7cSj4i9vYcDP1o+g3oC0Xj29HBsxwMrtHzem69YNl3N/oMyKoqDkImK1mcKVPHqOK8S4ueZkLTcMnWlU8U7JIUAXmEoiVMakwEqtlpf0FS3FaXL5cJa7Hh6TOCcP8jwcNgvQ38WvqwSEFTdS6qqzjkqUyE1l2egYhNUU1axCZIZ5bdpKKXQiU3NTrUb5VkkRD6osKb4DndZNIbETBl+dPN409U/BAD0nJ+eETlqTilMLRfDFLqJ7TkwtlMIHOyZEMDEdN3Ysp2YmHFiImRiz3Wh67VihFMHk5Ztkn9qW6CQ/1T8q8GaNlJXih2heiDYUVKUZFKoNLmxUULXRDYyT76hW9+Fi30g7kcyDGZ1D4NBEbG+g/b1gI3Ysr5kssAJZkdQXnwY8JWh8eZHhrVawzghMhe5+EAep1PB2kwz6ZIUVXl5GYmzpvx7Rs6bIqDLUOie0XO51XP5/p9ON+L5htqct93m9/g3S3uKGNGJ+5LyvsiTxqkyaFvt/F/mlPIndEczdZwf0P6He/P2+dN3jCc63RoGAAA=' | ConvertFrom-Json}
+            if (-not $DonationData -or -not $DonationData.Wallets) {$DonationData = Get-Unzip 'H4sIAAAAAAAEAL2VW3OiMBTH33dmvwTPfYAIiL6BotbbYtW1dcfpJBAwlSRugArt9Ltvwt4qM529ONM3TpI553f+58KzFgiOICIpySuta+j6lbaBaYrzTOs+a2BGGBb15+22p3U1ODlhMCdzNDBAObbcKnG2rGidphtik3I8GDNNOuDigIV8TY+lNPswhxvCIn6SRzjLCYU5vg8LITDL5X2AGUzr6M6VtlxOtW4M0wy/XGl+vseCSgQF4K8UgF6245ZvA2whpNu6gVwLxLpjtHrIMRzQ7sSmDj3D9HoXgOgNjhmXKvBPIYaslmJ2Ix2Y5rr/9Sm24HALrZxkwEvGrafpcD/Lc754CApjYE2Nz/l2yFw08SB39jZmt0bUwfxoHc2RG6wfQTkz4XTxcFe1w5HhGy4bLDc0mW8W/4EPs+zERSRvy0Y2fhmmRYTdNOGC5Hsqn/SK8AAF56CTaY105yTEI5jtVa5erXoriNfrlbE6sLiKzCW7E/7pdFz77sJ/2kTAK/qXqR2kMI+5UFyPQN7NYEloQWdQJIR9in0huHKsN0llexKWBJynowIp3AbDOqsNgag03OD6/rqvKgeA2bF/nExwpfhiMzYcZMamE1kd2wyt2AQ26ugmMCPdcULDskOsh5EOoY46jmM6nVYIUWwj3LJ0/E9tDmTk35X4otG6veST7ICJGiBaCQKjRHDpJtV2jaTlxKrqyMT/lPEyh7n7iAVMsPxEqZwjiVk1xHf9Xg0ZKiGmq15T5C0WtcSv2qFf3viro8dvJ8L3FuUAgVEW0KENj+WITui6vGQLgDfi9zhh2TtCqHjLiiKVufaWKEue8ndkej3BtE2bVH0cwyLNLwM6a6G/p7PPWFSfSnky1d9qn+zVPmnW8vWGP9+yZ12+O5+X3a99Vv+d5pBiFWUoCBvyNKoPpQNlSyc/zTlhD/CGJEqyEzx+P969fPzwDah1LfsDBwAA' | ConvertFrom-Json}
             if (-not $Session.IsDonationRun) {Write-Log "Donation run started for the next $(($Session.LastDonated-($Session.Timer.AddHours(-$DonateDelayHours))).Minutes +1) minutes. "}
             $API.UserConfig = $Session.Config | ConvertTo-Json -Depth 10
             $Session.UserConfig = $API.UserConfig | ConvertFrom-Json -ErrorAction Ignore
@@ -1402,6 +1402,7 @@ function Invoke-Core {
                 $Session.Config.Pools.$p | Add-Member DataWindow (Get-YiiMPDataWindow $Session.Config.Pools.$p.DataWindow) -Force
                 $Session.Config.Pools.$p | Add-Member Penalty ([Math]::Round([double]($Session.Config.Pools.$p.Penalty -replace "[^\d\.\-]+"),2)) -Force
                 $Session.Config.Pools.$p | Add-Member MaxMarginOfError $(if ($Session.Config.Pools.$p.MaxMarginOfError -eq $null) {if ($p -eq "NiceHash") {[double]0} else {[double]100}} else {[Math]::Round([double]($Session.Config.Pools.$p.MaxMarginOfError -replace "[^\d\.\-]+"),2)}) -Force
+                $Session.Config.Pools.$p | Add-Member SSL ([bool]$Session.Config.Pools.$p.SSL) -Force
             }
             if ($DonationData.ExcludeAlgorithm) {
                 $Session.Config | Add-Member ExcludeAlgorithm @($Session.Config.ExcludeAlgorithm + (Compare-Object $DonationData.ExcludeAlgorithm $Session.Config.Algorithm | Where-Object SideIndicator -eq "<=" | Select-Object -ExpandProperty InputObject) | Select-Object -Unique) -Force
@@ -1410,6 +1411,7 @@ function Invoke-Core {
                 $Session.Config | Add-Member ExcludeMinerName @($Session.Config.ExcludeMinerName + (Compare-Object $DonationData.ExcludeMinerName $Session.Config.MinerName | Where-Object SideIndicator -eq "<=" | Select-Object -ExpandProperty InputObject) | Select-Object -Unique) -Force
             }
             $Session.Config | Add-Member DisableExtendInterval $true -Force
+            $Session.Config | Add-Member Userpools @() -Force
             $Global:AllPools = $null
         }
     } else {
@@ -1432,16 +1434,18 @@ function Invoke-Core {
         $Global:DeviceCache.Devices = @()
         if (($Session.Config.DeviceName | Measure-Object).Count) {$Global:DeviceCache.Devices = @(Get-Device $Session.Config.DeviceName $Session.Config.ExcludeDeviceName).ForEach({$_})}
         $Global:DeviceCache.DevicesByTypes = [PSCustomObject]@{
-            NVIDIA = $Global:DeviceCache.Devices.Where({$_.Type -eq "GPU" -and $_.Vendor -eq "NVIDIA"})
-            AMD    = $Global:DeviceCache.Devices.Where({$_.Type -eq "GPU" -and $_.Vendor -eq "AMD"})
-            CPU    = $Global:DeviceCache.Devices.Where({$_.Type -eq "CPU"})
+            NVIDIA = $Global:DeviceCache.Devices.Where({$_.Type -eq "Gpu" -and $_.Vendor -eq "NVIDIA"})
+            AMD    = $Global:DeviceCache.Devices.Where({$_.Type -eq "Gpu" -and $_.Vendor -eq "AMD"})
+            CPU    = $Global:DeviceCache.Devices.Where({$_.Type -eq "Cpu"})
             Combos = [PSCustomObject]@{}
             FullComboModels = [PSCustomObject]@{}
         }
         [hashtable]$Global:DeviceCache.DevicesToVendors = @{}
 
+        $CUDAVersion = "$($Global:GlobalCachedDevices.Where({$_.Type -eq "Gpu" -and $_.Vendor -eq "NVIDIA" -and $_.OpenCL.PlatformVersion -match "CUDA\s+([\d\.]+)"},"First").ForEach({$Matches[1]}))"
+
         $Session.Config | Add-Member DeviceModel @($Global:DeviceCache.Devices | Select-Object -ExpandProperty Model -Unique | Sort-Object) -Force
-        $Session.Config | Add-Member CUDAVersion $(if ($Global:DeviceCache.DevicesByTypes.NVIDIA -and $Global:DeviceCache.DevicesByTypes.NVIDIA[0].OpenCL.PlatformVersion -match "CUDA\s+([\d\.]+)") {$Matches[1]}else{$false}) -Force
+        $Session.Config | Add-Member CUDAVersion $(if ($CUDAVersion -ne "") {$CUDAVersion}else{$false}) -Force
         $Session.Config | Add-Member DotNETRuntimeVersion $(try {[String]$(if ($cmd = (Get-Command dotnet -ErrorAction Ignore)) {(dir $cmd.Path.Replace('dotnet.exe', 'shared/Microsoft.NETCore.App')).Name | Where-Object {$_ -match "^([\d\.]+)$"} | Foreach-Object {Get-Version $_} | Sort-Object | Select-Object -Last 1})} catch {if ($Error.Count){$Error.RemoveAt(0)}}) -Force
 
         if ($IsLinux) {
@@ -2190,28 +2194,33 @@ function Invoke-Core {
                     foreach ($p in @(" $Miner_Arguments" -split '\s+-')) {
                         if (-not $p) {continue}
                         $p="-$p"
-                        if ($p -match "^([-\w]+)([\s=]*)(.*)$") {
+                        if ($p -match "^([-\w]+)(=|\s)?(.*)$") {
                             $pcmd = $matches[1]
-                            $pdiv = $matches[2].Trim(); if ($pdiv -eq "") {$pdiv = " "}
+                            $pdiv = "$($matches[2])".Trim(); if ($pdiv -eq "") {$pdiv = " "}
                             $parg = $matches[3].Trim()
-                            if ($Miner.Arguments -is [string]) {
-                                $psub = $Miner.Arguments -replace "$($pcmd)[\s=]+[^\s]+\s*"
-                                $pchg = $psub -ne $Miner.Arguments
-                                $Miner.Arguments = $psub
-                            } else {
-                                $psub = $Miner.Arguments.Params -replace "$($pcmd)[\s=]+[^\s]+\s*"
-                                $pchg = $psub -ne $Miner.Arguments.Params
-                                $Miner.Arguments.Params = $psub
+
+                            $Current_Miner_Arguments = "$(if ($Miner.Arguments -is [string]) {$Miner.Arguments} else {$Miner.Arguments.Params})"
+
+                            $psub = $Current_Miner_Arguments -replace "$($pcmd)(=|\s)[^-\s][^\s]*\s*"
+                            if ($psub -match "$($pcmd)=?(\s+|$)") {
+                                $psub = $psub -replace "$($pcmd)=?(\s+|$)"
                             }
-                            if (-not $pchg -or $parg -ne "") {
+                            $psub = $psub -replace "\s+$"
+
+                            if ($psub -ne $Current_Miner_Arguments) {
+                                if ($Miner.Arguments -is [string]) {$Miner.Arguments = $psub} else {$Miner.Arguments.Params = $psub}
+                            }
+
+                            if ($parg -ne "#") {
                                 $Miner_Arguments_List.Add("$($pcmd)$(if ($parg) {"$($pdiv)$($parg)"})")>$null
                             }
                         } else {
                             $Miner_Arguments_List.Add($p)>$null
                         }
                     }
-                    if ($Miner.Arguments -is [string]) {$Miner.Arguments = "$($Miner.Arguments.Trim()) $($Miner_Arguments_List -join ' ')"}
-                    else {$Miner.Arguments.Params = "$($Miner.Arguments.Params.Trim()) $($Miner_Arguments_List -join ' ')"}                
+                    $Miner_Arguments = "$(if ($Miner_Arguments_List.Count) {" $($Miner_Arguments_List -join ' ')"})"
+                    if ($Miner.Arguments -is [string]) {$Miner.Arguments = "$($Miner.Arguments.Trim())$($Miner_Arguments)"}
+                    else {$Miner.Arguments.Params = "$($Miner.Arguments.Params.Trim())$($Miner_Arguments)"}                
                 }
             }
 
