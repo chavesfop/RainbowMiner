@@ -18,12 +18,12 @@ $Name = Get-Item $MyInvocation.MyCommand.Path | Select-Object -ExpandProperty Ba
 $Pools_Request           = [PSCustomObject]@{}
 $PoolsCurrencies_Request = [PSCustomObject]@{}
 try {
-    $Pools_Request = Invoke-RestMethodAsync "https://pool.rplant.xyz/api/dash" -tag $Name -timeout 15 -cycletime 120
+    $Pools_Request = Invoke-RestMethodAsync "https://pool.rplant.xyz/api/dash" -tag $Name -timeout 30 -cycletime 120
     $PoolsCurrencies_Request = Invoke-RestMethodAsync "https://pool.rplant.xyz/api/currencies" -tag $Name -timeout 15 -cycletime 120 -delay 250
 }
 catch {
     if ($Error.Count){$Error.RemoveAt(0)}
-    Write-Log -Level Warn "Pool API ($Name) has failed. "
+    Write-Log -Level Warn "Pool API ($Name) has failed."
     return
 }
 
@@ -34,11 +34,20 @@ $Pool_Regions | Foreach-Object {$Pool_RegionsTable.$_ = Get-Region $_}
 
 $Pools_Request.tbs.PSObject.Properties.Value | Where-Object {$Wallets."$($_.symbol)" -or $InfoOnly} | ForEach-Object {
     $Pool_Currency       = $_.symbol
-    $Pool_Algorithm      = $_.algo
-    $Pool_Algorithm_Norm = Get-Algorithm $Pool_Algorithm
+    
+    $Pool_Coin           = Get-Coin $Pool_Currency -Algorithm $_.algo
+    
+    if ($Pool_Coin) {
+        $Pool_Algorithm_Norm = $Pool_Coin.Algo
+        $Pool_CoinName       = $Pool_Coin.Name
+    } else {
+        $Pool_Algorithm_Norm = Get-Algorithm $_.algo
+        $Pool_CoinName       = (Get-Culture).TextInfo.ToTitleCase($_.info.coin)
+    }
+
     $Pool_Fee            = 1.0
     $Pool_User           = $Wallets.$Pool_Currency
-    $Pool_EthProxy       = if ($Pool_Algorithm_Norm -match $Global:RegexAlgoHasEthproxy) {"minerproxy"} elseif ($Pool_Algorithm_Norm -eq "KawPOW") {"stratum"} else {$null}
+    $Pool_EthProxy       = if ($Pool_Algorithm_Norm -match $Global:RegexAlgoHasEthproxy) {"minerproxy"} elseif ($Pool_Algorithm_Norm -match $Global:RegexAlgoIsProgPow) {"stratum"} else {$null}
 
     $Pool_Stratum        = if ($_.info.links.stratums) {"randomx"} else {"stratum-%region%"}
 
@@ -56,7 +65,7 @@ $Pools_Request.tbs.PSObject.Properties.Value | Where-Object {$Wallets."$($_.symb
                     [PSCustomObject]@{
                         Algorithm     = $Pool_Algorithm_Norm
                         Algorithm0    = $Pool_Algorithm_Norm
-                        CoinName      = $_.Value.name
+                        CoinName      = $Pool_CoinName
                         CoinSymbol    = $Pool_Currency
                         Currency      = $Pool_Currency
                         Price         = 0
@@ -81,6 +90,7 @@ $Pools_Request.tbs.PSObject.Properties.Value | Where-Object {$Wallets."$($_.symb
                         PenaltyFactor = 1
                         Disabled      = $false
                         HasMinerExclusions = $false
+                        Price_0       = 0.0
                         Price_Bias    = 0.0
                         Price_Unbias  = 0.0
                         Wallet        = $Pool_User

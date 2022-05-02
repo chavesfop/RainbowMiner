@@ -26,8 +26,8 @@ $Name = Get-Item $MyInvocation.MyCommand.Path | Select-Object -ExpandProperty Ba
 }
 
 $Pools_Data = @(
-    [PSCustomObject]@{regions = @("asia","eu","useast");          host = "-etc.ethermine.org"; rpc = "api-etc.ethermine.org"; symbol = "ETC"; port = 4444; fee = 1; divisor = 1000000}
-    [PSCustomObject]@{regions = @("asia","eu","uswest","useast"); host = ".ethermine.org";     rpc = "api.ethermine.org";     symbol = "ETH"; port = 4444; fee = 1; divisor = 1000000}
+    [PSCustomObject]@{regions = @("asia","eu","useast");          host = "-etc.ethermine.org"; rpc = "api-etc.ethermine.org"; symbol = "ETC"; port = @(4444,5555); altport = @(14444); fee = 1; divisor = 1000000}
+    [PSCustomObject]@{regions = @("asia","eu","uswest","useast"); host = ".ethermine.org";     rpc = "api.ethermine.org";     symbol = "ETH"; port = @(4444,5555); altport = @(14444); fee = 1; divisor = 1000000}
 )
 
 $Pool_Currencies = $Pools_Data.symbol | Select-Object -Unique | Where-Object {$Wallets.$_ -or $InfoOnly}
@@ -39,7 +39,7 @@ $Pools_Data | Where-Object {$Wallets."$($_.symbol)" -or $InfoOnly} | ForEach-Obj
     $Pool_Algorithm_Norm = Get-Algorithm $Pool_Coin.Algo
     $Pool_Currency = $_.symbol
 
-    $Pool_EthProxy = if ($Pool_Algorithm_Norm -match $Global:RegexAlgoHasEthproxy) {"qtminer"} elseif ($Pool_Algorithm_Norm -eq "KawPOW") {"stratum"} else {$null}
+    $Pool_EthProxy = if ($Pool_Algorithm_Norm -match $Global:RegexAlgoHasEthproxy) {"qtminer"} elseif ($Pool_Algorithm_Norm -match $Global:RegexAlgoIsProgPow) {"stratum"} else {$null}
 
     $Pool_Request = [PSCustomObject]@{}
 
@@ -61,6 +61,9 @@ $Pools_Data | Where-Object {$Wallets."$($_.symbol)" -or $InfoOnly} | ForEach-Obj
     foreach($Pool_Region in $_.regions) {
         $Pool_Ssl = $false
         foreach($Pool_Port in $Pool_Ports) {
+            $Pool_Protocol = "stratum+$(if ($Pool_Ssl) {"ssl"} else {"tcp"})"
+            $Pool_Host     = "$($Pool_RegionsMap.$Pool_Region)$($_.host)"
+            $Pool_User     = "$($Wallets.$Pool_Currency).{workername:$Worker}"
             [PSCustomObject]@{
                 Algorithm     = $Pool_Algorithm_Norm
                 Algorithm0    = $Pool_Algorithm_Norm
@@ -70,15 +73,26 @@ $Pools_Data | Where-Object {$Wallets."$($_.symbol)" -or $InfoOnly} | ForEach-Obj
                 Price         = 0
                 StablePrice   = 0
                 MarginOfError = 0
-                Protocol      = "stratum+$(if ($Pool_Ssl) {"ssl"} else {"tcp"})"
-                Host          = "$($Pool_RegionsMap.$Pool_Region)$($_.host)"
+                Protocol      = $Pool_Protocol
+                Host          = $Pool_Host
                 Port          = $Pool_Port
-                User          = "$($Wallets.$Pool_Currency).{workername:$Worker}"
+                User          = $Pool_User
                 Pass          = "x"
                 Region        = $Pool_RegionsTable.$Pool_Region
                 SSL           = $Pool_Ssl
                 Updated       = (Get-Date).ToUniversalTime()
                 PoolFee       = $_.fee
+                Failover      = if ($_.altport[[int]$Pool_Ssl]) {
+                                    @(
+                                        [PSCustomObject]@{
+                                            Protocol = $Pool_Protocol
+                                            Host     = $Pool_Host
+                                            Port     = $_.altport[[int]$Pool_Ssl]
+                                            User     = $Pool_User
+                                            Pass     = "x"
+                                        }
+                                    )
+                                } else {$Null}
                 DataWindow    = $DataWindow
                 Workers       = $Pool_Request.data.poolStats.workers
                 Hashrate      = $Stat.HashRate_Live
@@ -91,6 +105,7 @@ $Pools_Data | Where-Object {$Wallets."$($_.symbol)" -or $InfoOnly} | ForEach-Obj
                 PenaltyFactor = 1
                 Disabled      = $false
                 HasMinerExclusions = $false
+                Price_0       = 0.0
                 Price_Bias    = 0.0
                 Price_Unbias  = 0.0
                 Wallet        = $Wallets.$Pool_Currency

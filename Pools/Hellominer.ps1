@@ -39,7 +39,7 @@ $Pools_Data | Where-Object {$Pool_Currency = "$($_.symbol -replace "\d+$")";$Wal
 
     $Pool_Algorithm_Norm = Get-Algorithm $Pool_Coin.algo
 
-    $Pool_EthProxy = if ($Pool_Algorithm_Norm -match $Global:RegexAlgoHasEthproxy) {"ethproxy"} elseif ($Pool_Algorithm_Norm -eq "KawPOW") {"stratum"} else {$null}
+    $Pool_EthProxy = if ($Pool_Algorithm_Norm -match $Global:RegexAlgoHasEthproxy) {"ethproxy"} elseif ($Pool_Algorithm_Norm -match $Global:RegexAlgoIsProgPow) {"stratum"} else {$null}
 
     $Pool_Request = [PSCustomObject]@{}
     if (-not $InfoOnly) {
@@ -85,6 +85,7 @@ $Pools_Data | Where-Object {$Pool_Currency = "$($_.symbol -replace "\d+$")";$Wal
                 PenaltyFactor = 1
                 Disabled      = $false
                 HasMinerExclusions = $false
+                Price_0       = 0.0
                 Price_Bias    = 0.0
                 Price_Unbias  = 0.0
                 Wallet        = $Pool_Wallet

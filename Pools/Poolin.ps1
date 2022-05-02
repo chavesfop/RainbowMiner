@@ -18,8 +18,7 @@ $Name = Get-Item $MyInvocation.MyCommand.Path | Select-Object -ExpandProperty Ba
 $Pool_Region_Default = Get-Region "ca"
 
 $Pools_Data = @(
-    [PSCustomObject]@{coin="ETH";fee=3.0;divisor=1}
-    [PSCustomObject]@{coin="RVN";fee=4.0;divisor=[math]::Pow(2,32)}
+    [PSCustomObject]@{coin="ETH";host="eth.ss.poolin.me";fee=1.0;divisor=1}
 )
 
 $Pools_Data | Where-Object {$Wallets."$($_.coin)" -or $InfoOnly} | ForEach-Object {
@@ -27,7 +26,7 @@ $Pools_Data | Where-Object {$Wallets."$($_.coin)" -or $InfoOnly} | ForEach-Objec
     $Pool_Coin = Get-Coin $_.coin
     $Pool_Rpc  = $_.coin.ToLower()
     $Pool_Algorithm_Norm = Get-Algorithm $Pool_Coin.Algo
-    $Pool_EthProxy = if ($Pool_Algorithm_Norm -match $Global:RegexAlgoHasEthproxy) {"ethproxy"} elseif ($Pool_Algorithm_Norm -eq "KawPOW") {"stratum"} else {$null}
+    $Pool_EthProxy = if ($Pool_Algorithm_Norm -match $Global:RegexAlgoHasEthproxy) {"ethproxy"} elseif ($Pool_Algorithm_Norm -match $Global:RegexAlgoIsProgPow) {"stratum"} else {$null}
 
     $ok = $true
     if (-not $InfoOnly) {
@@ -37,10 +36,10 @@ $Pools_Data | Where-Object {$Wallets."$($_.coin)" -or $InfoOnly} | ForEach-Objec
 
         $errno = "NF"
         try {
-            $Pool_RequestBase = Invoke-RestMethodAsync "https://api-prod.poolin.com/api/public/v2/basedata/coin/$Pool_Rpc" -tag $Name -cycletime 120
+            $Pool_RequestBase = Invoke-RestMethodAsync "https://api-prod.poolin.me/api/public/v2/basedata/coin/$Pool_Rpc" -tag $Name -cycletime 120
             if ("$($Pool_RequestBase.err_no)" -ne "0" -or -not $Pool_RequestBase.data) {$ok=$false;if ($Pool_RequestBase.err_no) {$errno = $Pool_RequestBase.err_no}}
             else {
-                $Pool_RequestCoin = Invoke-RestMethodAsync "https://api-prod.poolin.com/api/public/v1/pool/stats/merge?coin_type=$Pool_Rpc" -tag $Name -cycletime 120
+                $Pool_RequestCoin = Invoke-RestMethodAsync "https://api-prod.poolin.me/api/public/v1/pool/stats/merge?coin_type=$Pool_Rpc&show_pool_power=1" -tag $Name -cycletime 120
                 if ("$($Pool_RequestCoin.err_no)" -ne "0" -or -not $Pool_RequestCoin.data) {$ok=$false;if ($Pool_RequestCoin.err_no) {$errno = $Pool_RequestCoin.err_no}}
             }
         }
@@ -71,7 +70,7 @@ $Pools_Data | Where-Object {$Wallets."$($_.coin)" -or $InfoOnly} | ForEach-Objec
         StablePrice   = 0
         MarginOfError = 0
         Protocol      = "stratum+tcp"
-        Host          = "$Pool_Rpc.ss.poolin.com"
+        Host          = $_.host
         Port          = 443
         User          = "$($Wallets.$Pool_Currency)$(if ($Wallets.$Pool_Currency -notmatch '\.') {".001"})"
         Pass          = "123"
@@ -90,6 +89,7 @@ $Pools_Data | Where-Object {$Wallets."$($_.coin)" -or $InfoOnly} | ForEach-Objec
         PenaltyFactor = 1
         Disabled      = $false
         HasMinerExclusions = $false
+        Price_0       = 0.0
         Price_Bias    = 0.0
         Price_Unbias  = 0.0
         Wallet        = "$($Wallets.$Pool_Currency -replace '\.[^.]+$')"

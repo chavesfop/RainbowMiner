@@ -32,7 +32,7 @@ $Pools_Data | Where-Object {$Wallets."$($_.symbol)" -or ($_.altsymbol -and $Wall
     $Pool_Currency = $_.symbol
     $Pool_Url = "https://api.mintpond.com/v1/$($_.url)"
 
-    $Pool_EthProxy = if ($Pool_Algorithm_Norm -match $Global:RegexAlgoHasEthproxy) {"ethproxy"} elseif ($Pool_Algorithm_Norm -eq "KawPOW") {"stratum"} else {$null}
+    $Pool_EthProxy = if ($Pool_Algorithm_Norm -match $Global:RegexAlgoHasEthproxy) {"ethproxy"} elseif ($Pool_Algorithm_Norm -match $Global:RegexAlgoIsProgPow) {"stratum"} else {$null}
 
     if (-not ($Pool_Wallet = $Wallets.$Pool_Currency)) {
         $Pool_Wallet = $Wallets."$($_.altsymbol)"
@@ -107,6 +107,7 @@ $Pools_Data | Where-Object {$Wallets."$($_.symbol)" -or ($_.altsymbol -and $Wall
                 PenaltyFactor = 1
                 Disabled      = $false
                 HasMinerExclusions = $false
+                Price_0       = 0.0
                 Price_Bias    = 0.0
                 Price_Unbias  = 0.0
                 Wallet        = $Pool_Wallet

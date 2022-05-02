@@ -11,7 +11,8 @@ param(
     [Bool]$AllowZero = $false,
     [String]$StatAverage = "Minute_10",
     [String]$StatAverageStable = "Week",
-    [String]$Name = ""
+    [String]$Name = "",
+    [String]$Password = ""
 )
 
 $Session.Config.Userpools | Where-Object {$_.Name -eq $Name -and $_.Enable -and ($Wallets."$($_.Currency)" -or $InfoOnly)} | ForEach-Object {
@@ -21,12 +22,13 @@ $Session.Config.Userpools | Where-Object {$_.Name -eq $Name -and $_.Enable -and 
         WorkerName = "{workername:$Worker}"
         Currency   = "$($_.Currency)".ToUpper()
         CoinSymbol = "$($_.CoinSymbol)".ToUpper()
+        Password   = "$($Password)"
     }
 
     $Pool_Coin     = Get-Coin $Pool_Params["CoinSymbol"]
     $Pool_User     = "$(if ($_.User) {$_.User} else {"`$Wallet.`$WorkerName"})"
     $Pool_Pass     = "$(if ($_.Pass) {$_.Pass} else {"x"})"
-    $Pool_EthProxy = if ($Pool_Algorithm_Norm -match $Global:RegexAlgoHasEthproxy) {"ethproxy"} elseif ($Pool_Algorithm_Norm -eq "KawPOW") {"stratum"} else {$null}
+    $Pool_EthProxy = if ($Pool_Algorithm_Norm -match $Global:RegexAlgoHasEthproxy) {"ethproxy"} elseif ($Pool_Algorithm_Norm -match $Global:RegexAlgoIsProgPow) {"stratum"} else {$null}
 
     $Pool_Algorithm_Norm = Get-Algorithm "$(if ($_.Algorithm) {$_.Algorithm} else {$Pool_Coin.Algo})"
 
@@ -69,6 +71,7 @@ $Session.Config.Userpools | Where-Object {$_.Name -eq $Name -and $_.Enable -and 
         PenaltyFactor = 1
         Disabled      = $false
         HasMinerExclusions = $false
+        Price_0       = 0.0
         Price_Bias    = 0.0
         Price_Unbias  = 0.0
         Wallet        = $Pool_Params["Wallet"]

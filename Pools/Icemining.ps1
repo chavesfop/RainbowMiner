@@ -37,18 +37,16 @@ if (($PoolCoins_Request | Get-Member -MemberType NoteProperty -ErrorAction Ignor
 
 [hashtable]$Pool_RegionsTable = @{}
 
-@("us","eu","asia","uswest") | Foreach-Object {$Pool_RegionsTable.$_ = Get-Region $_}
+$Pool_Regions = @("fi","de","sg","eu-north","tr","us-west")
+$Pool_Regions | Foreach-Object {$Pool_RegionsTable.$_ = Get-Region $_}
 
 $Pools_Data = @(
-    [PSCustomObject]@{symbol="ARW";             region=@("us","eu","asia");          host=@("stratum.icemining.ca","eu.icemining.ca","asia.icemining.ca"); fee = 1}
-    [PSCustomObject]@{symbol="EPIC-Cuckatoo31"; region=@("us");                      host=@("epic.hashrate.to"); fee = 2}
-    [PSCustomObject]@{symbol="EPIC-RandomEPIC"; region=@("us");                      host=@("epic.hashrate.to"); fee = 2}
-    [PSCustomObject]@{symbol="EPIC-ProgPoW";    region=@("us");                      host=@("epic.hashrate.to"); fee = 2}
-    [PSCustomObject]@{symbol="KDA";             region=@("us","eu");                 host=@("kda-us.icemining.ca","kda-eu.icemining.ca"); fee = 1}
-    [PSCustomObject]@{symbol="MWC-SEC";         region=@("us");                      host=@("mwc.hashrate.to"); fee = 1; hashrate = "C29d"}
-    [PSCustomObject]@{symbol="MWC-PRI";         region=@("us");                      host=@("mwc.hashrate.to"); fee = 1; hashrate = "C31"}
-    [PSCustomObject]@{symbol="NIM";             region=@("us","eu","asia","uswest"); host=@("nimiq.icemining.ca","nimiq.icemining.ca","nimiq.hashrate.to","nimiq.hashrate.to"); fee = 1.25; ssl = $true}
-    [PSCustomObject]@{symbol="SIN";             region=@("us","eu","asia");          host=@("stratum.icemining.ca","eu.icemining.ca","asia.icemining.ca"); fee = 1}
+    #[PSCustomObject]@{symbol="EPIC-Cuckatoo31"; region = @("us"); host=@("epic.hashrate.to"); port=4000; fee = 2}
+    [PSCustomObject]@{symbol="EPIC-RandomEPIC"; region = @("eu-north","de","tr","us-west"); host=@("epic.eu-north.hashrate.to","epic.eu-de.hashrate.to","epic.tr.hashrate.to","epic.us-west.hashrate.to"); port=4000; fee = 2; hashrate = "randomx"}
+    [PSCustomObject]@{symbol="EPIC-ProgPoW";    region = @("eu-north","de","tr","us-west"); host=@("epic.eu-north.hashrate.to","epic.eu-de.hashrate.to","epic.tr.hashrate.to","epic.us-west.hashrate.to"); port=4000; fee = 2; hashrate = "progpow"}
+    [PSCustomObject]@{symbol="NIM";             region = @("us"); host=@("nimiq.icemining.ca"); port=2053; fee = 1.25; ssl = $true}
+    #[PSCustomObject]@{symbol="SIN";             region = @("us","eu","asia"); host=@("stratum.icemining.ca","eu.icemining.ca","asia.icemining.ca"); port=4205; fee = 1}
+    [PSCustomObject]@{symbol="TON";             region = @("fi","de","sg","ca"); host=@("ton.fi.hashrate.to","ton.de.hashrate.to","ton.sg.hashrate.to","ton.ca.hashrate.to"); port=4003; fee = 1; ssl = $true}
 )
 
 $Pools_Data | Where-Object {$Pool_Currency = $_.symbol -replace "-.+$"; $PoolCoins_Request.$Pool_Currency -ne $null -and ($Wallets.$Pool_Currency -or $InfoOnly)} | ForEach-Object {
@@ -65,15 +63,13 @@ $Pools_Data | Where-Object {$Pool_Currency = $_.symbol -replace "-.+$"; $PoolCoi
     $Pool_Algorithm_Norm = Get-Algorithm $Pool_Algorithm
 
     if (-not $InfoOnly) {
-        $Stat = Set-Stat -Name "$($Name)_$($_.symbol)_Profit" -Value 0 -Duration $StatSpan -ChangeDetection $false -HashRate $(if ($Pool_Currency -eq "EPIC") {10} elseif ($_.hashrate) {$PoolCoins_Request.$Pool_Currency.hashrate."$($_.hashrate)"} else {$PoolCoins_Request.$Pool_Currency.hashrate}) -BlockRate $PoolCoins_Request.$Pool_Currency."24h_blocks" -Quiet
+        $Stat = Set-Stat -Name "$($Name)_$($_.symbol)_Profit" -Value 0 -Duration $StatSpan -ChangeDetection $false -HashRate $(if ($_.hashrate) {$PoolCoins_Request.$Pool_Currency.hashrate."$($_.hashrate)"} elseif ($Pool_Currency -eq "EPIC") {10} else {$PoolCoins_Request.$Pool_Currency.hashrate}) -BlockRate $PoolCoins_Request.$Pool_Currency."24h_blocks" -Quiet
         if (-not $Stat.HashRate_Live -and -not $AllowZero) {return}
     }
 
-    $Pool_User = if ($Pool_Currency -eq "MWC") {
-        $Wallets.$Pool_Currency
-    } else {
-        "$($Wallets.$Pool_Currency).{workername:$Worker}"
-    }
+    $Pool_User = "$($Wallets.$Pool_Currency).{workername:$Worker}"
+    $Pool_Protocol = "$(if ($Pool_Currency -ne "TON") {"stratum+$(if ($_.ssl) {"ssl"} else {"tcp"})"})"
+    $Pool_Fee = if ($PoolCoins_Request.$Pool_Currency.reward_model.PPLNS -ne $null) {[double]$PoolCoins_Request.$Pool_Currency.reward_model.PPLNS} else {$_.fee}
 
     $Pool_Pass = if ($Pool_Currency -eq "SIN") {
         "c=$Pool_Currency{diff:,d=`$difficulty}$(if ($Params.$Pool_Currency) {",$($Params.$Pool_Currency)"})"
@@ -92,25 +88,27 @@ $Pools_Data | Where-Object {$Pool_Currency = $_.symbol -replace "-.+$"; $PoolCoi
             Price         = 0
             StablePrice   = 0
             MarginOfError = 0
-            Protocol      = "stratum+$(if ($_.ssl) {"ssl"} else {"tcp"})"
+            Protocol      = $Pool_Protocol
             Host          = "$($_.host[$i])"
-            Port          = $PoolCoins_Request.$Pool_Currency.port
+            Port          = $_.port
             User          = $Pool_User
             Pass          = $Pool_Pass
             Region        = $Pool_RegionsTable.$Pool_Region
             SSL           = if ($_.ssl) {$true} else {$false}
             Updated       = $Stat.Updated
-            PoolFee       = $_.fee
+            PoolFee       = $Pool_Fee
             Workers       = $PoolCoins_Request.$Pool_Currency.workers
             Hashrate      = $Stat.HashRate_Live
             BLK           = $Stat.BlockRate_Average
             TSL           = $PoolCoins_Request.$Pool_Currency.timesincelast
             WTM           = $true
+            EthMode       = if ($Pool_Algorithm_Norm -eq "SHA256ton") {"icemining"} else {$null}
             Name          = $Name
             Penalty       = 0
             PenaltyFactor = 1
             Disabled      = $false
             HasMinerExclusions = $false
+            Price_0       = 0.0
             Price_Bias    = 0.0
             Price_Unbias  = 0.0
             Wallet        = $Wallets.$Pool_Currency

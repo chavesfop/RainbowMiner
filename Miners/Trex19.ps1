@@ -65,7 +65,7 @@ $Commands = [PSCustomObject[]]@(
     [PSCustomObject]@{MainAlgorithm = "honeycomb"; Params = ""} #Honeycomb (new with v0.12.0)
     [PSCustomObject]@{MainAlgorithm = "hsr"; Params = ""} #HSR
     [PSCustomObject]@{MainAlgorithm = "jeonghash"; Params = ""} #GLTJeongHash  (new with v0.8.6)
-    [PSCustomObject]@{MainAlgorithm = "lyra2z"; Params = ""} #Lyra2z
+    #[PSCustomObject]@{MainAlgorithm = "lyra2z"; Params = ""} #Lyra2z, fails to validate on CPU
     [PSCustomObject]@{MainAlgorithm = "megabtx"; Params = ""; IsGtx = $true} #MegaBTX (Bitcore) (new with v0.18.1)
     [PSCustomObject]@{MainAlgorithm = "padihash"; Params = ""} #GLTPadiHash  (new with v0.8.6)
     [PSCustomObject]@{MainAlgorithm = "pawelhash"; Params = ""} #GLTPawelHash  (new with v0.8.6)
@@ -85,7 +85,7 @@ $Commands = [PSCustomObject[]]@(
     [PSCustomObject]@{MainAlgorithm = "x17"; Params = ""} #X17
     [PSCustomObject]@{MainAlgorithm = "x21s"; Params = ""; ExtendInterval = 3; FaultTolerance = 0.7; HashrateDuration = "Day"} #X21s (broken in v0.8.6, fixed in v0.8.8)
     [PSCustomObject]@{MainAlgorithm = "x22i"; Params = ""} #X22i
-    [PSCustomObject]@{MainAlgorithm = "x25x"; Params = ""} #X25X
+    [PSCustomObject]@{MainAlgorithm = "x25x"; Params = ""; FaultTolerance = 0.5} #X25X
     [PSCustomObject]@{MainAlgorithm = "x33"; Params = ""} #X33 (new with v0.17.3)
 )
 
@@ -139,7 +139,7 @@ $Global:DeviceCache.DevicesByTypes.NVIDIA | Select-Object Vendor, Model -Unique 
         $Miner_Device = $Device | Where-Object {($IsGtx -or -not $Miner_IsGtx -or $_.OpenCL.Architecture -notin @("Other","Pascal","Turing")) -and (Test-VRAM $_ $MinMemGB)}
 
 		foreach($Algorithm_Norm in @($Algorithm_Norm_0,"$($Algorithm_Norm_0)-$($Miner_Model)","$($Algorithm_Norm_0)-GPU")) {
-            if ($Pools.$Algorithm_Norm.Host -and $Miner_Device -and (-not $_.ExcludePoolName -or $Pools.$Algorithm_Norm.Name -notmatch $_.ExcludePoolName)) {
+            if ($Pools.$Algorithm_Norm.Host -and $Miner_Device -and (-not $_.ExcludePoolName -or $Pools.$Algorithm_Norm.Host -notmatch $_.ExcludePoolName)) {
                 if ($First) {
                     $Miner_Port   = $Port -f ($Miner_Device | Select-Object -First 1 -ExpandProperty Index)
                     $Miner_Name   = (@($Name) + @($Miner_Device.Name | Sort-Object) | Select-Object) -join '-'
@@ -176,6 +176,9 @@ $Global:DeviceCache.DevicesByTypes.NVIDIA | Select-Object Vendor, Model -Unique 
                     PowerDraw      = 0
                     BaseName       = $Name
                     BaseAlgorithm  = $Algorithm_Norm_0
+                    Benchmarked    = $Global:StatsCache."$($Miner_Name)_$($Algorithm_Norm_0)_HashRate".Benchmarked
+                    LogFile        = $Global:StatsCache."$($Miner_Name)_$($Algorithm_Norm_0)_HashRate".LogFile
+                    ExcludePoolName = $_.ExcludePoolName
 				}
 			}
 		}

@@ -9,15 +9,21 @@ param(
     [String]$DataWindow = "estimate_current",
     [Bool]$InfoOnly = $false,
     [Bool]$AllowZero = $false,
+    [Bool]$EnableLolminerDual = $false,
     [Bool]$EnableNanominerDual = $false,
+    [Bool]$EnableTrexDual = $false,
     [String]$StatAverage = "Minute_10",
     [String]$StatAverageStable = "Week"
 )
 
 $Name = Get-Item $MyInvocation.MyCommand.Path | Select-Object -ExpandProperty BaseName
 
+$Pool_Regions = @("eu","us-east","us-west","asia","cn")
+
 $Pool_RegionsTable = [ordered]@{}
-@("eu","us-east","us-west","asia") | Foreach-Object {$Pool_RegionsTable.$_ = Get-Region $_}
+$Pool_Regions | Foreach-Object {$Pool_RegionsTable.$_ = Get-Region $_}
+
+$Pool_RegionsTable["asia"] = Get-Region "sea"
 
 $Pools_Data = @(
     [PSCustomObject]@{symbol = "ETC"; port = @(4444,24443)}
@@ -25,7 +31,7 @@ $Pools_Data = @(
 )
 
 $Pool_Currencies = $Pools_Data.symbol | Select-Object -Unique | Where-Object {$Wallets.$_ -or $InfoOnly}
-if (((-not $EnableNanominerDual -and -not $Pool_Currencies) -or -not $Wallets.ZIL) -and -not $InfoOnly) {return}
+if (((-not $EnableNanominerDual -and -not $EnableLolminerDual -and -not $EnableTrexDual -and -not $Pool_Currencies) -or -not $Wallets.ZIL) -and -not $InfoOnly) {return}
 
 if ($Pool_Currencies) {
     $Pool_RequestCalc = [PSCustomObject]@{}
@@ -41,7 +47,7 @@ if ($Pool_Currencies) {
     }
 }
 
-$Pools_Data | Where-Object {$EnableNanominerDual -or $Wallets."$($_.symbol)" -or $InfoOnly} | ForEach-Object {
+$Pools_Data | Where-Object {$EnableNanominerDual -or $EnableLolminerDual -or $EnableTrexDual -or $Wallets."$($_.symbol)" -or $InfoOnly} | ForEach-Object {
     $Pool_Coin  = Get-Coin $_.symbol
     $Pool_Ports = $_.port
     $Pool_Algorithm_Norm = Get-Algorithm $Pool_Coin.Algo
@@ -51,7 +57,7 @@ $Pools_Data | Where-Object {$EnableNanominerDual -or $Wallets."$($_.symbol)" -or
 
     $Pool_Request = [PSCustomObject]@{}
 
-    if (-not $InfoOnly -and $Pool_Currencies) {
+    if (-not $InfoOnly -and $Pool_Currencies -contains $Pool_Currency) {
         $timestamp      = Get-UnixTimestamp
         $timestamp24h   = $timestamp - 86400
 
@@ -72,10 +78,10 @@ $Pools_Data | Where-Object {$EnableNanominerDual -or $Wallets."$($_.symbol)" -or
         if (-not $Stat.HashRate_Live -and -not $AllowZero) {return}
     }
 
-    foreach($Pool_Region in $Pool_RegionsTable.Keys) {
+    foreach($Pool_Region in $Pool_Regions) {
         $Pool_Ssl = $false
         foreach($Pool_Port in $Pool_Ports) {
-            if ($Pool_Currencies) {
+            if ($Pool_Currencies -contains $Pool_Currency) {
                 [PSCustomObject]@{
                     Algorithm     = $Pool_Algorithm_Norm
                     Algorithm0    = $Pool_Algorithm_Norm
@@ -105,6 +111,7 @@ $Pools_Data | Where-Object {$EnableNanominerDual -or $Wallets."$($_.symbol)" -or
                     PenaltyFactor = 1
                     Disabled      = $false
                     HasMinerExclusions = $false
+                    Price_0       = 0.0
                     Price_Bias    = 0.0
                     Price_Unbias  = 0.0
                     Wallet        = "$($Wallets.$Pool_Currency).$($Wallets.ZIL)"
@@ -112,7 +119,7 @@ $Pools_Data | Where-Object {$EnableNanominerDual -or $Wallets."$($_.symbol)" -or
                     Email         = $Email
                 }
             }
-            if ($EnableNanominerDual) {
+            if ($EnableNanominerDual -or $EnableLolminerDual -or $EnableTrexDual) {
                 [PSCustomObject]@{
                     Algorithm     = "Zilliqa$($Pool_Currency)"
                     Algorithm0    = "Zilliqa$($Pool_Currency)"
@@ -125,7 +132,7 @@ $Pools_Data | Where-Object {$EnableNanominerDual -or $Wallets."$($_.symbol)" -or
                     Protocol      = "stratum+$(if ($Pool_Ssl) {"ssl"} else {"tcp"})"
                     Host          = "$($Pool_Region).ezil.me"
                     Port          = $Pool_Port
-                    User          = $Wallets.ZIL
+                    User          = "$($Wallets.ZIL).{workername:$Worker}"
                     Pass          = "x"
                     Region        = $Pool_RegionsTable.$Pool_Region
                     SSL           = $Pool_Ssl
@@ -139,6 +146,7 @@ $Pools_Data | Where-Object {$EnableNanominerDual -or $Wallets."$($_.symbol)" -or
                     PenaltyFactor = 1
                     Disabled      = $false
                     HasMinerExclusions = $false
+                    Price_0       = 0.0
                     Price_Bias    = 0.0
                     Price_Unbias  = 0.0
                     Wallet        = $Wallets.ZIL

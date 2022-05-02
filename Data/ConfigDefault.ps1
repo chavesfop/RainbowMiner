@@ -1,6 +1,6 @@
 ﻿[PSCustomObject]@{
     PoolName = @("Nicehash","MiningPoolHub","NLpool","ZergPool","Zpool")
-    ExcludeMinerName = if ($IsLinux) {@("CcminerMTP","CcminerMTP10","Lukminer")} else {@("CcminerMTP","CcminerMTP10")}
+    ExcludeMinerName = @("CcminerMTP","CcminerMTP10","Nsgminer")
     MinerStatusURL = "https://rbminer.net"
     FastestMinerOnly = $true
     RemoteAPI = $false 
@@ -14,6 +14,7 @@
     DisableMSIAmonitor = $false
     EnableOCProfiles = $false
     EnableOCVoltage = $false
+    EnableOCFullReset = $true
     EnableOCLinuxForcePState = $true
     EnableAutoUpdate = $true
     EnableUpdateDuringPause = $true
@@ -27,6 +28,7 @@
     EnableMinerBackups  = $true
     EnableKeepDownloads = $true
     EnableMinersAsRoot = $true
+    EnableFastlaneBenchmarkMissing = $true
     MiningHeatControl = 2.0
     DisableUnprofitableAlgolist = $false
     CPUMiningThreads = $Global:GlobalCPUInfo.Cores
@@ -38,8 +40,8 @@
     MinimumMiningIntervals = 1
     MaxActivityDays = 2
     EnableServerConfig = $false
-    ServerConfigName = @("config","coins","pools","algorithms","scheduler")
-    ExcludeServerConfigVars = @("APIAuth","APIPassword","APIPort","APIUser","CPUMiningAffinity","CPUMiningThreads","DeviceName","EnableServerConfig","ExcludeDeviceName","ExcludeServerConfigVars","GPUMiningAffinity","GroupName","LinuxDisplay","LinuxXAuthority","MSIApath","NVSMIpath","Proxy","RunMode","ServerConfigName","ServerName","ServerPassword","ServerPort","ServerUser","StartPaused","WorkerName","StaticCPUMinerPort","StaticGPUMinerPort")
+    ServerConfigName = @("config","coins","pools","algorithms","scheduler","mrralgorithms")
+    ExcludeServerConfigVars = @("APIAuth","APIPassword","APIPort","APIUser","CPUMiningAffinity","CPUMiningThreads","DeviceName","EnableServerConfig","ExcludeDeviceName","ExcludeServerConfigVars","GPUMiningAffinity","GroupName","LinuxDisplay","LinuxXAuthority","MSIApath","NVSMIpath","Proxy","RunMode","ServerConfigName","ServerName","ServerPassword","ServerPort","ServerUser","StartPaused","WorkerName","StaticCPUMinerPort","StaticGPUMinerPort","OpenCLPlatformSorting")
     EnableServerExcludeList = $false
     ExcludeCoinsymbolBalances = @("MAX","MUSIC")
 }

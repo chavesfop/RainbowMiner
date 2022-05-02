@@ -22,6 +22,7 @@ class Miner {
     [string]$DeviceModel
     [Bool]$Enabled = $false
     [string[]]$Pool
+    [string[]]$Wallet
     $Profit
     $Profit_Bias
     $Profit_Unbias
@@ -31,6 +32,7 @@ class Miner {
     $Stratum
     [double[]]$Speed
     [double[]]$Speed_Live
+    [double[]]$BLK
     [double[]]$Variance
     [string]$StartCommand
     [string]$StopCommand
@@ -41,6 +43,7 @@ class Miner {
     [Bool]$ShowMinerWindow = $false
     [int]$MSIAprofile
     $OCprofile
+    $OCprofileSet
     [Bool]$EnableOCprofile
     $DevFee
     [string]$BaseName
@@ -84,17 +87,18 @@ class Miner {
     [DateTime]$StartTime = [DateTime]::MinValue
     [DateTime]$ActiveLast = [DateTime]::MinValue
     [TimeSpan]$RunningTime = [TimeSpan]::Zero
+    [MinerStatus]$Status = [MinerStatus]::Idle
+    $Profiles
+    [TimeSpan]$Active = [TimeSpan]::Zero
+    [Int]$Activated = 0
+    [DateTime]$IntervalBegin = 0
+    [DateTime]$LastSetOCTime = 0
+    [Int]$StartPort = 0
     $Job
     $EthPillJob
     $WrapperJob
-    hidden $Profiles
-    hidden [TimeSpan]$Active = [TimeSpan]::Zero
-    hidden [Int]$Activated = 0
-    hidden [MinerStatus]$Status = [MinerStatus]::Idle
+
     hidden [Array]$Data = @()
-    hidden [DateTime]$IntervalBegin = 0
-    hidden [DateTime]$LastSetOCTime = 0
-    hidden [Int]$StartPort = 0
 
     [String]GetArguments() {
         return $this.Arguments -replace "\`$mport",$this.Port
@@ -151,15 +155,38 @@ class Miner {
             $this.Port = $Miner_Port
 
             if ($this.EnableAutoPort) {
-                try {
-                    $PortsInUse = @((([Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties()).GetActiveTcpListeners()).Port | Where-Object {$_} | Select-Object -Unique)
+
+                [int[]]$PortsInUse = try {
+                    $ipProperties = [Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties()
+                    @($ipProperties.GetActiveTcpListeners().Port) + @($ipProperties.GetActiveTcpConnections().LocalEndPoint.Port) | Where-Object {$_} | Sort-Object -Unique
+                } catch {
+                    if ($Error.Count){$Error.RemoveAt(0)}
+
+                    try {
+                        if ($Global:IsLinux -and (Test-Path ".\IncludesLinux\bash")) {
+                            Get-ChildItem ".\IncludesLinux\bash" -Filter "getports.sh" -File | Foreach-Object {
+                                try {
+                                    & chmod +x "$($_.FullName)" > $null
+                                    Invoke-exe $_.FullName -ExpandLines
+                                } catch {if ($Error.Count){$Error.RemoveAt(0)}}
+                            }
+                        } elseif ($Global:IsWindows) {
+                            if (Get-Command "Get-NetTCPConnection" -ErrorAction Ignore) {
+                                (Get-NetTCPConnection -ErrorAction Stop).LocalPort | Sort-Object -Unique
+                            } else {
+                                netstat -anp TCP | Foreach-Object {"$($_)".Trim() -split "\s+" | Select-Object -Index 1} | Where-Object {$_ -match ":(\d+)$"} | Foreach-Object {[int]$Matches[1]} | Sort-Object -Unique
+                            }
+                        }
+                    } catch {
+                        Write-Log -Level Warn "Auto-Port failed for $($this.Name): $($_.Exception.Message)"
+                        if ($Error.Count){$Error.RemoveAt(0)}
+                    }
+                }
+
+                if ($PortsInUse) {
                     $portmax = [math]::min($this.Port+9999,65535)
                     while ($this.Port -le $portmax -and $PortsInUse.Contains($this.Port)) {$this.Port+=20}
                     if ($this.Port -gt $portmax) {$this.Port=$Miner_Port}
-                } catch {
-                    if ($Error.Count){$Error.RemoveAt(0)}
-                    Write-Log -Level Warn "Auto-Port failed for $($this.Name): $($_.Exception.Message)"
-                    $this.Port=$Miner_Port
                 }
             }
 
@@ -169,16 +196,17 @@ class Miner {
 
             $ArgumentList = $this.GetArguments()
             
-            $Prescription = if ($this.EthPillEnable    -ne "disable" -and (Compare-Object $this.BaseAlgorithm @("Ethash","VertHash") -IncludeEqual -ExcludeDifferent | Measure-Object).Count) {$this.EthPillEnable}
+            $Prescription = if ($this.EthPillEnable    -ne "disable" -and ($this.BaseAlgorithm -match "^Etc?hash|^UbqHash|^Verthash" | Measure-Object).Count) {$this.EthPillEnable}
                         elseif ($this.EthPillEnableMTP -ne "disable" -and (Compare-Object $this.BaseAlgorithm @("MTP")               -IncludeEqual -ExcludeDifferent | Measure-Object).Count) {$this.EthPillEnableMTP}
 
             if ($Prescription -and -not ($this.Name -match "^ClaymoreDual" -and $ArgumentList -match "-strap")) {
-                $Prescription_Device = @(Get-Device $this.DeviceName) | Where-Object Model -in @("GTX1080","GTX1080Ti","TITANXP")
+                $Prescription_Device = Get-Device -Name $this.DeviceName
+                $Prescription_Device = $Prescription_Device | Where-Object {$_.Model_Base -in @("GTX1080","GTX1080Ti","TITANXP")}
                 $Prescription = switch ($Prescription) {
-                    "RevA" {$Prescription = "revA";Break}
-                    "RevB" {$Prescription = "revB";Break}
+                    "RevA" {"revA";Break}
+                    "RevB" {"revB";Break}
                 }
-                if ($Prescription -ne "" -and $Prescription_Device) {
+                if ("$Prescription" -ne "" -and $Prescription_Device) {
                     Write-Log "Starting OhGodAnETHlargementPill $($Prescription) on $($Prescription_Device.Name -join ',')"
                     if ($Global:IsLinux) {
                         $Command = ".\IncludesLinux\bin\OhGodAnETHlargementPill-r2"
@@ -186,13 +214,14 @@ class Miner {
                         $Command = ".\Includes\OhGodAnETHlargementPill-r2.exe"
                     }
                     $Command = $Global:ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Command)
-                    $this.EthPillJob = Start-SubProcess -FilePath $Command -ArgumentList "--$($Prescription) $($Prescription_Device.Type_Vendor_Index -join ',')" -WorkingDirectory (Split-Path $Command) -ShowMinerWindow $true -IsWrapper $false -ScreenName "ethpill_$($Prescription)_$($Prescription_Device.Type_Vendor_Index -join '_')" -Vendor $DeviceVendor -SetLDLIBRARYPATH
+                    $this.EthPillJob = Start-SubProcess -FilePath $Command -ArgumentList "--$($Prescription) $($Prescription_Device.Type_Vendor_Index -join ',')" -WorkingDirectory (Split-Path $Command) -ShowMinerWindow $true -IsWrapper $false -ScreenName "ethpill_$($Prescription)_$($Prescription_Device.Type_Vendor_Index -join '_')" -Vendor $DeviceVendor -SetLDLIBRARYPATH -WinTitle "OhGodAnETHlargementPill-r2 --$($Prescription) $($Prescription_Device.Type_Vendor_Index -join ',')"
                     Start-Sleep -Milliseconds 250 #wait 1/4 second
                 }
             }
-            $this.StartTime = (Get-Date).ToUniversalTime()
-            $this.LogFile = $Global:ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath(".\Logs\$($this.Name)-$($this.Port)_$(Get-Date -Format "yyyy-MM-dd_HH-mm-ss").txt")
-            $this.Job = Start-SubProcess -FilePath $this.Path -ArgumentList $ArgumentList -LogPath $this.LogFile -WorkingDirectory (Split-Path $this.Path) -Priority ($this.DeviceName | ForEach-Object {if ($_ -like "CPU*") {$this.Priorities.CPU} else {$this.Priorities.GPU}} | Measure-Object -Maximum | Select-Object -ExpandProperty Maximum) -CPUAffinity $this.Priorities.CPUAffinity -ShowMinerWindow $this.ShowMinerWindow -IsWrapper $this.IsWrapper() -EnvVars $this.EnvVars -MultiProcess $this.MultiProcess -ScreenName "$($this.DeviceName -join '_')" -BashFileName "start_$($this.DeviceName -join '_')_$($this.Pool -join '_')_$($this.BaseAlgorithm -join '_')" -Vendor $DeviceVendor -SetLDLIBRARYPATH:$this.SetLDLIBRARYPATH
+            $Now = Get-Date
+            $this.StartTime = $Now.ToUniversalTime()
+            $this.LogFile   = $Global:ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath(".\Logs\$($this.Name)-$($this.Port)_$($Now.ToString("yyyy-MM-dd_HH-mm-ss")).txt")
+            $this.Job = Start-SubProcess -FilePath $this.Path -ArgumentList $ArgumentList -LogPath $this.LogFile -WorkingDirectory (Split-Path $this.Path) -Priority ($this.DeviceName | ForEach-Object {if ($_ -like "CPU*") {$this.Priorities.CPU} else {$this.Priorities.GPU}} | Measure-Object -Maximum | Select-Object -ExpandProperty Maximum) -CPUAffinity $this.Priorities.CPUAffinity -ShowMinerWindow $this.ShowMinerWindow -IsWrapper $this.IsWrapper() -EnvVars $this.EnvVars -MultiProcess $this.MultiProcess -ScreenName "$($this.DeviceName -join '_')" -BashFileName "start_$($this.DeviceName -join '_')_$($this.Pool -join '_')_$($this.BaseAlgorithm -join '_')" -Vendor $DeviceVendor -SetLDLIBRARYPATH:$this.SetLDLIBRARYPATH -WinTitle "$($this.Name -replace "-.+$") on $($this.DeviceModel) at $($this.Pool -join '+') with $($this.BaseAlgorithm -join '+')".Trim()
 
             if ($this.Job.XJob) {
                 $this.Status = [MinerStatus]::Running
@@ -235,18 +264,17 @@ class Miner {
 
     hidden StartMiningPreProcess() {
         $this.Stratum = @()
-        while ($this.Stratum.Count -lt $this.Algorithm.Count) {$this.Stratum += [PSCustomObject]@{Accepted=0;Rejected=0;LastAcceptedTime=$null;LastRejectedTime=$null}}
+        while ($this.Stratum.Count -lt $this.Algorithm.Count) {$this.Stratum += [PSCustomObject]@{Accepted=0;Rejected=0;Stale=0;LastAcceptedTime=$null;LastRejectedTime=$null;LastStaleTime=$null}}
         $this.RejectedShareRatio = @(0.0) * $this.Algorithm.Count
         $this.ActiveLast = Get-Date
     }
 
     hidden StartMiningPostProcess() { }
 
-    hidden StopMiningPreProcess() {
-        $this.ResetOCprofile(500) #reset all overclocking
-    }
+    hidden StopMiningPreProcess() { }
 
     hidden StopMiningPostProcess() {
+        $this.ResetOCprofile(500) #reset all overclocking
         $this.New = $false
     }
 
@@ -401,10 +429,16 @@ class Miner {
     }
 
     UpdateShares([Int]$Index,[Double]$Accepted,[Double]$Rejected) {
+        $this.UpdateShares($Index,$Accepted,$Rejected,0)
+    }
+
+    UpdateShares([Int]$Index,[Double]$Accepted,[Double]$Rejected,[Double]$Stale) {
         if ($this.Stratum[$Index].Accepted -ne $Accepted) {$this.Stratum[$Index].LastAcceptedTime = Get-Date}
         if ($this.Stratum[$Index].Rejected -ne $Rejected) {$this.Stratum[$Index].LastRejectedTime = Get-Date}
+        if ($this.Stratum[$Index].Stale -ne $Stale) {$this.Stratum[$Index].LastStaleTime = Get-Date}
         $this.Stratum[$Index].Accepted = $Accepted
         $this.Stratum[$Index].Rejected = $Rejected
+        $this.Stratum[$Index].Stale = $Stale
         if ($Accepted + $Rejected) {
             $this.RejectedShareRatio[$Index] = [Math]::Round($Rejected / ($Accepted + $Rejected),4)
         }
@@ -595,7 +629,7 @@ class Miner {
             $HashRates_Count    = ($HashRates_Counts.Values | ForEach-Object {$_} | Measure-Object -Minimum).Minimum
             $HashRates_Average  = ($HashRates_Averages.Values | ForEach-Object {$_} | Measure-Object -Average).Average * $HashRates_Averages.Keys.Count
             $HashRates_Variance = if ($HashRates_Average -and $HashRates_Count -gt 2) {($HashRates_Variances.Keys | ForEach-Object {$_} | ForEach-Object {Get-Sigma $HashRates_Variances.$_} | Measure-Object -Maximum).Maximum / $HashRates_Average} else {1}
-            Write-Log "GetHashrate $Algorithm #$($Step) smpl:$HashRates_Count, avg:$([Math]::Round($HashRates_Average,2)), var:$([Math]::Round($HashRates_Variance,3)*100)"
+            Write-Log -Level Info "$($this.Name): GetHashrate $Algorithm #$($Step) smpl:$HashRates_Count, avg:$([Math]::Round($HashRates_Average,2)), var:$([Math]::Round($HashRates_Variance,3)*100)"
         }
 
         $this.Variance[$this.Algorithm.IndexOf($Algorithm)] = $HashRates_Variance
@@ -634,6 +668,12 @@ class Miner {
         return $this.LastSetOCTime
     }
 
+    SetOCprofileValue([string]$DeviceModel,[string]$Feature,$value) {
+        if ($this.OCprofileSet -eq $null) {$this.OCprofileSet = [PSCustomObject]@{}}
+        if ($this.OCprofileSet.$DeviceModel -eq $null) {$this.OCprofileSet | Add-Member $DeviceModel ([PSCustomObject]@{}) -Force}
+        if ($this.OCprofileSet.$DeviceModel.$Feature -eq $null) {$this.OCprofileSet.$DeviceModel | Add-Member $Feature $value -Force}
+    }
+
     SetOCprofile($Config,[int]$Sleep=500) {
 
         $ApplyToAllPerformanceLevels = $Global:Session.Config.EnableOCLinuxSetAllPStates
@@ -644,13 +684,17 @@ class Miner {
 
         [System.Collections.Generic.List[string]]$applied = @()
         [System.Collections.Generic.List[string]]$NvCmd = @()
+        [System.Collections.Generic.List[string]]$NvSmiCmd = @()
         [System.Collections.Generic.List[string]]$AmdCmd = @()
+        [System.Collections.Generic.List[string]]$IntelCmd = @()
         [System.Collections.Generic.List[object]]$RunCmd = @()
+
+        $IsAfterburner = Test-Afterburner
 
         $DeviceVendor = $Global:GlobalCachedDevices | Where-Object {$this.OCprofile.ContainsKey($_.Model)} | Foreach-Object {$_.Vendor} | Select-Object -Unique
 
         if ($Global:IsWindows) {
-            if ($DeviceVendor -ne "NVIDIA") {
+            if ($DeviceVendor -ne "NVIDIA" -and $IsAfterburner) {
                 try {
                     $Script:abMonitor.ReloadAll()
                     $Script:abControl.ReloadAll()
@@ -699,7 +743,7 @@ class Miner {
                     }
                 }
                 if ($DeviceIds.Count -gt 0) {
-                    $Profile = if ($Config.OCprofiles."$($this.OCprofile.$DeviceModel)-$($DeviceModel)" -ne $null) {$Config.OCprofiles."$($this.OCprofile.$DeviceModel)-$($DeviceModel)"} elseif ($Config.OCprofiles."$($this.OCprofile.$DeviceModel)" -ne $null) {$Config.OCprofiles."$($this.OCprofile.$DeviceModel)"} else {[PSCustomObject]@{PowerLimit = 0;ThermalLimit = 0;MemoryClockBoost = "*";CoreClockBoost = "*";LockVoltagePoint = "*"}}
+                    $Profile = if ($Config.OCprofiles."$($this.OCprofile.$DeviceModel)-$($DeviceModel)" -ne $null) {$Config.OCprofiles."$($this.OCprofile.$DeviceModel)-$($DeviceModel)"} elseif ($Config.OCprofiles."$($this.OCprofile.$DeviceModel)" -ne $null) {$Config.OCprofiles."$($this.OCprofile.$DeviceModel)"} else {[PSCustomObject]@{PowerLimit = 0;ThermalLimit = 0;PriorizeThermalLimit = "0";MemoryClockBoost = "*";CoreClockBoost = "*";LockVoltagePoint = "*";LockMemoryClock = "*";LockCoreClock = "*"}}
                     if ($Profile) {
                         $this.Profiles | Add-Member $DeviceModel ([PSCustomObject]@{Index = $DeviceIds; CardId = $CardIds; Profile = $Profile; x = $x}) -Force
                     }
@@ -709,32 +753,41 @@ class Miner {
 
         foreach ($DeviceModel in @($this.Profiles.PSObject.Properties.Name | Select-Object)) {
             if (-not $Config) {
-                $Profile = [PSCustomObject]@{PowerLimit = 0;ThermalLimit = 0;MemoryClockBoost = "0";CoreClockBoost = "0";LockVoltagePoint = "*"}
+                $Profile = [PSCustomObject]@{PowerLimit = 0;ThermalLimit = 0;PriorizeThermalLimit = "0";MemoryClockBoost = "";CoreClockBoost = "";LockVoltagePoint = "";LockMemoryClock = "";LockCoreClock = ""}
+                if ($Global:Session.Config.EnableOCFullReset) {
+                    $Profile.MemoryClockBoost = $Profile.CoreClockBoost = $Profile.LockVoltagePoint = $Profile.LockMemoryClock = $Profile.LockCoreClock = "0"
+                } elseif ($this.OCprofileSet.$DeviceModel) {
+                    $this.OCprofileSet.$DeviceModel.PSObject.Properties.Name | Where-Object {$Profile.$_ -ne $null -and $Profile.$_ -eq ""} | Foreach-Object {$Profile.$_ = "0"}
+                }
                 if ($this.Profiles.$DeviceModel.Profile.PostCmd) {
                     $RunCmd.Add([PSCustomObject]@{FilePath = $this.Profiles.$DeviceModel.Profile.PostCmd;ArgumentList=$this.Profiles.$DeviceModel.Profile.PostCmdArguments}) > $null
                 }
+                $this.OCprofileSet = $null
             } else {
                 $Profile = $this.Profiles.$DeviceModel.Profile
 
                 $Profile.CoreClockBoost   = $Profile.CoreClockBoost -replace '[^0-9\-]+'
                 $Profile.MemoryClockBoost = $Profile.MemoryClockBoost -replace '[^0-9\-]+'
                 $Profile.LockVoltagePoint = $Profile.LockVoltagePoint -replace '[^0-9]+'
-                if (-not $Config.EnableOCVoltage) {$Profile.LockVoltagePoint = ''}
+                $Profile.LockMemoryClock  = $Profile.LockMemoryClock -replace '[^0-9]+'
+                $Profile.LockCoreClock    = $Profile.LockCoreClock -replace '[^0-9]+'
 
                 if ($Profile.PreCmd) {
                     $RunCmd.Add([PSCustomObject]@{FilePath = $Profile.PreCmd;ArgumentList=$Profile.PreCmdArguments}) > $null
                 }
             }
 
+            if (-not $Config.EnableOCVoltage) {$Profile.LockVoltagePoint = ''}
+
             $applied_any = $false
 
             if ($DeviceVendor -eq "NVIDIA") {
 
                 foreach($DeviceId in $this.Profiles.$DeviceModel.Index) {
-                    if ($Profile.PowerLimit -gt 0) {$val=[math]::max([math]::min($Profile.PowerLimit,200),20);if ($Global:IsLinux) {Set-NvidiaPowerLimit $DeviceId $val} else {$NvCmd.Add("-setPowerTarget:$($DeviceId),$($val)") >$null};$applied_any=$true}
+                    if ($Profile.PowerLimit -gt 0) {$val=[math]::max([math]::min($Profile.PowerLimit,200),20);if ($Global:IsLinux) {Set-NvidiaPowerLimit $DeviceId $val} else {$NvCmd.Add("-setPowerTarget:$($DeviceId),$($val)") >$null};$applied_any=$true;if ($Config) {$this.SetOCprofileValue($DeviceModel,"PowerLimit",$val)}}
                     if (-not $Global:IsLinux) {
-                        if ($Profile.ThermalLimit -gt 0) {$val=[math]::max([math]::min($Profile.ThermalLimit,95),50);$NvCmd.Add("-setTempTarget:$($DeviceId),0,$($val)") >$null;$applied_any=$true}
-                        if ($Profile.LockVoltagePoint-match '^\-*[0-9]+$') {$val=[int]([Convert]::ToInt32($Profile.LockVoltagePoint)/12500)*12500;$NvCmd.Add("-lockVoltagePoint:$($DeviceId),$($val)") >$null;$applied_any=$true}
+                        if ($Profile.ThermalLimit -gt 0) {$val=[math]::max([math]::min($Profile.ThermalLimit,95),50);$NvCmd.Add("-setTempTarget:$($DeviceId),$(if (Get-Yes $Profile.PriorizeThermalLimit) {"1"} else {"0"}),$($val)") >$null;$applied_any=$true;if ($Config) {$this.SetOCprofileValue($DeviceModel,"ThermalLimit",$val);$this.SetOCprofileValue($DeviceModel,"PriorizeThermalLimit",(Get-Yes $Profile.PriorizeThermalLimit))}}
+                        if ($Profile.LockVoltagePoint-match '^\-*[0-9]+$') {$val=[int]([Convert]::ToInt32($Profile.LockVoltagePoint)/12500)*12500;$NvCmd.Add("-lockVoltagePoint:$($DeviceId),$($val)") >$null;$applied_any=$true;if ($Config) {$this.SetOCprofileValue($DeviceModel,"LockVoltagePoint",$val)}}
                     } else {
                         $NvCmd.Add("-a '[gpu:$($DeviceId)]/GPUPowerMizerMode=1'") >$null
                     }
@@ -742,12 +795,16 @@ class Miner {
                         if ($ApplyToAllPerformanceLevels) {"-a '[gpu:$($DeviceId)]/GPUGraphicsClockOffsetAllPerformanceLevels=$($val)'"}
                         else {"-a '[gpu:$($DeviceId)]/GPUGraphicsClockOffset[$($this.Profiles.$DeviceModel.x)]=$($val)'"}} else {"-setBaseClockOffset:$($DeviceId),0,$($val)"})") >$null
                         $applied_any=$true
+                        if ($Config) {$this.SetOCprofileValue($DeviceModel,"CoreClockBoost",$val)}
                     }
                     if ($Profile.MemoryClockBoost -match '^\-*[0-9]+$') {$val = [Convert]::ToInt32($Profile.MemoryClockBoost);$NvCmd.Add("$(if ($Global:IsLinux) {
                         if ($ApplyToAllPerformanceLevels) {"-a '[gpu:$($DeviceId)]/GPUMemoryTransferRateOffsetAllPerformanceLevels=$($val)'"}
                         else{"-a '[gpu:$($DeviceId)]/GPUMemoryTransferRateOffset[$($this.Profiles.$DeviceModel.x)]=$($val)'"}} else {"-setMemoryClockOffset:$($DeviceId),0,$($val)"})") >$null
                         $applied_any=$true
+                        if ($Config) {$this.SetOCprofileValue($DeviceModel,"MemoryClockBoost",$val)}
                     }
+                    if ($Profile.LockCoreClock -match '^[0-9]+$') {$NvSmiCmd.Add("-i $($DeviceId) $(if ($Profile.LockCoreClock -eq 0) {"-rgc"} else {"-lgc $($Profile.LockCoreClock)"})") > $null;if ($Config) {$this.SetOCprofileValue($DeviceModel,"LockCoreClock",$Profile.LockCoreClock)}}
+                    if ($Profile.LockMemoryClock -match '^[0-9]+$') {$NvSmiCmd.Add("-i $($DeviceId) $(if ($Profile.LockMemoryClock -eq 0) {"-rmc"} else {"-lmc $($Profile.LockMemoryClock)"})") > $null;if ($Config) {$this.SetOCprofileValue($DeviceModel,"LockMemoryClock",$Profile.LockMemoryClock)}}
                 }
 
             } elseif ($DeviceVendor -eq "AMD" -and $Global:IsLinux) {
@@ -757,20 +814,22 @@ class Miner {
                 }
             
             } elseif ($Pattern.$DeviceVendor -ne $null) {
-                $DeviceId = 0
-                $Script:abMonitor.GpuEntries | Where-Object Device -like $Pattern.$DeviceVendor | Select-Object -ExpandProperty Index | Foreach-Object {
-                    if ($DeviceId -in $this.Profiles.$DeviceModel.Index) {
-                        $GpuEntry = $Script:abControl.GpuEntries[$_]
-                        try {if (-not ($GpuEntry.PowerLimitMin -eq 0 -and $GpuEntry.PowerLimitMax -eq 0) -and $Profile.PowerLimit -gt 0) {$Script:abControl.GpuEntries[$_].PowerLimitCur = [math]::max([math]::min($Profile.PowerLimit,$GpuEntry.PowerLimitMax),$GpuEntry.PowerLimitMin);$applied_any=$true}} catch {if ($Error.Count){$Error.RemoveAt(0)};Write-Log -Level Warn $_.Exception.Message}
-                        try {if (-not ($GpuEntry.ThermalLimitMin -eq 0 -and $GpuEntry.ThermalLimitMax -eq 0) -and $Profile.ThermalLimit -gt 0) {$Script:abControl.GpuEntries[$_].ThermalLimitCur = [math]::max([math]::min($Profile.ThermalLimit,$GpuEntry.ThermalLimitMax),$GpuEntry.ThermalLimitMin);$applied_any=$true}} catch {if ($Error.Count){$Error.RemoveAt(0)};Write-Log -Level Warn $_.Exception.Message}
-                        try {if (-not ($GpuEntry.CoreClockBoostMin -eq 0 -and $GpuEntry.CoreClockBoostMax -eq 0) -and $Profile.CoreClockBoost -match '^\-*[0-9]+$') {$Script:abControl.GpuEntries[$_].CoreClockBoostCur = [math]::max([math]::min([convert]::ToInt32($Profile.CoreClockBoost) * 1000,$GpuEntry.CoreClockBoostMax),$GpuEntry.CoreClockBoostMin);$applied_any=$true}} catch {if ($Error.Count){$Error.RemoveAt(0)};Write-Log -Level Warn $_.Exception.Message}
-                        try {if (-not ($GpuEntry.MemoryClockBoostMin -eq 0 -and $GpuEntry.MemoryClockBoostMax -eq 0) -and $Profile.MemoryClockBoost -match '^\-*[0-9]+$') {$Script:abControl.GpuEntries[$_].MemoryClockBoostCur = [math]::max([math]::min([convert]::ToInt32($Profile.MemoryClockBoost) * 1000,$GpuEntry.MemoryClockBoostMax),$GpuEntry.MemoryClockBoostMin);$applied_any=$true}} catch {if ($Error.Count){$Error.RemoveAt(0)};Write-Log -Level Warn $_.Exception.Message}
-                        if ($Profile.LockVoltagePoint -match '^\-*[0-9]+$') {Write-Log -Level Warn "$DeviceModel does not support LockVoltagePoint overclocking"}
+                if ($IsAfterburner) {
+                    $DeviceId = 0
+                    $Script:abMonitor.GpuEntries | Where-Object Device -like $Pattern.$DeviceVendor | Select-Object -ExpandProperty Index | Foreach-Object {
+                        if ($DeviceId -in $this.Profiles.$DeviceModel.Index) {
+                            $GpuEntry = $Script:abControl.GpuEntries[$_]
+                            try {if (-not ($GpuEntry.PowerLimitMin -eq 0 -and $GpuEntry.PowerLimitMax -eq 0) -and $Profile.PowerLimit -gt 0) {$Script:abControl.GpuEntries[$_].PowerLimitCur = [math]::max([math]::min($Profile.PowerLimit,$GpuEntry.PowerLimitMax),$GpuEntry.PowerLimitMin);$applied_any=$true;if ($Config) {$this.SetOCprofileValue($DeviceModel,"PowerLimit",$Script:abControl.GpuEntries[$_].PowerLimitCur)}}} catch {if ($Error.Count){$Error.RemoveAt(0)};Write-Log -Level Warn $_.Exception.Message}
+                            try {if (-not ($GpuEntry.ThermalLimitMin -eq 0 -and $GpuEntry.ThermalLimitMax -eq 0) -and $Profile.ThermalLimit -gt 0) {$Script:abControl.GpuEntries[$_].ThermalLimitCur = [math]::max([math]::min($Profile.ThermalLimit,$GpuEntry.ThermalLimitMax),$GpuEntry.ThermalLimitMin);$applied_any=$true;if ($Config) {$this.SetOCprofileValue($DeviceModel,"ThermalLimit",$Script:abControl.GpuEntries[$_].ThermalLimitCur)}}} catch {if ($Error.Count){$Error.RemoveAt(0)};Write-Log -Level Warn $_.Exception.Message}
+                            try {if (-not ($GpuEntry.CoreClockBoostMin -eq 0 -and $GpuEntry.CoreClockBoostMax -eq 0) -and $Profile.CoreClockBoost -match '^\-*[0-9]+$') {$Script:abControl.GpuEntries[$_].CoreClockBoostCur = [math]::max([math]::min([convert]::ToInt32($Profile.CoreClockBoost) * 1000,$GpuEntry.CoreClockBoostMax),$GpuEntry.CoreClockBoostMin);$applied_any=$true;if ($Config) {$this.SetOCprofileValue($DeviceModel,"CoreClockBoost",$Script:abControl.GpuEntries[$_].CoreClockBoostCur)}}} catch {if ($Error.Count){$Error.RemoveAt(0)};Write-Log -Level Warn $_.Exception.Message}
+                            try {if (-not ($GpuEntry.MemoryClockBoostMin -eq 0 -and $GpuEntry.MemoryClockBoostMax -eq 0) -and $Profile.MemoryClockBoost -match '^\-*[0-9]+$') {$Script:abControl.GpuEntries[$_].MemoryClockBoostCur = [math]::max([math]::min([convert]::ToInt32($Profile.MemoryClockBoost) * 1000,$GpuEntry.MemoryClockBoostMax),$GpuEntry.MemoryClockBoostMin);$applied_any=$true;if ($Config) {$this.SetOCprofileValue($DeviceModel,"MemoryClockBoost",$Script:abControl.GpuEntries[$_].MemoryClockBoostCur)}}} catch {if ($Error.Count){$Error.RemoveAt(0)};Write-Log -Level Warn $_.Exception.Message}
+                            if ($Profile.LockVoltagePoint -match '^\-*[0-9]+$') {Write-Log -Level Warn "$DeviceModel does not support LockVoltagePoint overclocking"}
+                        }
+                        $DeviceId++
                     }
-                    $DeviceId++
                 }
             }
-            if ($applied_any) {$applied.Add("OC set for $($this.BaseName)-$($DeviceModel)-$($this.BaseAlgorithm -join '-'): PL=$(if ($Profile.PowerLimit) {"$($Profile.PowerLimit)%"} else {"-"}), TL=$(if ($Profile.ThermalLimit) {"$($Profile.ThermalLimit)°C"} else {"-"}), MEM=$(if ($Profile.MemoryClockBoost -ne '') {"$($Profile.MemoryClockBoost)"} else {"-"}), CORE=$(if ($Profile.CoreClockBoost -ne '') {"$($Profile.CoreClockBoost)"} else {"-"}), LVP=$(if ($Profile.LockVoltagePoint -ne '') {"$($Profile.LockVoltagePoint)µV"} else {"-"})") > $null}
+            if ($applied_any) {$applied.Add("OC set for $($this.BaseName)-$($DeviceModel)-$($this.BaseAlgorithm -join '-'): PL=$(if ($Profile.PowerLimit) {"$($Profile.PowerLimit)%"} else {"-"}), TL=$(if ($Profile.ThermalLimit) {"$($Profile.ThermalLimit)°C"} else {"-"}), PRIO=$(if (Get-Yes $Profile.PriorizeThermalLimit) {"TL"} else {"PL"}), MEMboost=$(if ($Profile.MemoryClockBoost -ne '') {"$($Profile.MemoryClockBoost)"} else {"-"}), COREboost=$(if ($Profile.CoreClockBoost -ne '') {"$($Profile.CoreClockBoost)"} else {"-"}), MEMlock=$(if ($Profile.LockMemoryClock -ne '') {"$($Profile.LockMemoryClock)"} else {"-"}), CORElock=$(if ($Profile.LockCoreClock -ne '') {"$($Profile.LockCoreClock)"} else {"-"}), LVP=$(if ($Profile.LockVoltagePoint -ne '') {"$($Profile.LockVoltagePoint)µV"} else {"-"})") > $null}
         }
 
         if ($RunCmd.Count) {
@@ -796,25 +855,32 @@ class Miner {
                 if ($Sleep -gt 0) {Start-Sleep -Milliseconds $Sleep}
                 if ($DeviceVendor -eq "NVIDIA") {
                     Invoke-NvidiaSettings $NvCmd
+                    if ($Global:IsLinux -or (Test-IsElevated)) {
+                        $NvSmiCmd | Foreach-Object {Invoke-NvidiaSmi -Arguments $_ -Runas > $null}
+                    }
                 } elseif ($DeviceVendor -eq "AMD" -and $AmdCmd.Count) {
                     #t.b.i
-                } else {
+                } elseif ($DeviceVendor -eq "INTEL" -and $IntelCmd.Count) {
+                    #t.b.i
+                } elseif ($IsAfterburner) {
                     $Script:abControl.CommitChanges()
                 }
-                $applied | Foreach-Object {Write-Log $_}
+                $applied | Foreach-Object {Write-Log -Level Info $_}
                 if ($Sleep -gt 0) {Start-Sleep -Milliseconds $Sleep}
             } catch {
                 if ($Error.Count){$Error.RemoveAt(0)}
                 Write-Log -Level Warn "Failed to apply OC for $($this.Name))!"
-                $applied | Foreach-Object {Write-Log "$($_ -replace "OC set","OC NOT set")"}
+                $applied | Foreach-Object {Write-Log -Level Info "$($_ -replace "OC set","OC NOT set")"}
             }
         }
     }
 
     ResetOCprofile([int]$Sleep=500) {
-        if (-not $this.HasOCprofile()) {return}
-        $this.SetOCprofile($null,$Sleep)
-        Write-Log "OC reset for $($this.BaseName)"
+        if ($this.HasOCprofile()) {
+            $this.SetOCprofile($null,$Sleep)
+            Write-Log "OC reset for $($this.BaseName)"
+        }
+        $this.OCprofileSet = $null
     }
 }
 
@@ -833,11 +899,11 @@ class BMiner : Miner {
         $HashRate = [PSCustomObject]@{}
 
         try {
-            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/api/v1/status/solver" -Timeout $Timeout
+            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/api/v1/status/solver" -Timeout $Timeout -ForceHttpClient
         }
         catch {
             if ($Error.Count){$Error.RemoveAt(0)}
-            Write-Log -Level Info "Failed to connect to miner ($($this.Name)). "
+            Write-Log -Level Info "Failed to connect to miner $($this.Name). "
             return
         }
 
@@ -892,11 +958,11 @@ class Cast : Miner {
         $HashRate = [PSCustomObject]@{}
 
         try {
-            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/" -Timeout $Timeout
+            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/" -Timeout $Timeout -ForceHttpClient
         }
         catch {
             if ($Error.Count){$Error.RemoveAt(0)}
-            Write-Log -Level Info "Failed to connect to miner ($($this.Name)). "
+            Write-Log -Level Info "Failed to connect to miner $($this.Name). "
             return
         }
 
@@ -937,7 +1003,7 @@ class Ccminer : Miner {
         }
         catch {
             if ($Error.Count){$Error.RemoveAt(0)}
-            Write-Log -Level Info "Failed to connect to miner ($($this.Name)). "
+            Write-Log -Level Info "Failed to connect to miner $($this.Name). "
             return
         }
 
@@ -981,14 +1047,14 @@ class Claymore : Miner {
         }
         catch {
             if ($Error.Count){$Error.RemoveAt(0)}
-            Write-Log -Level Info "Failed to connect to miner ($($this.Name)). "
+            Write-Log -Level Info "Failed to connect to miner $($this.Name). "
             return
         }
 
         $HashRate_Name    = [String]$this.Algorithm[0]
         $HashRate_Value   = [Double]($Data.result[2] -split ";")[0]
 
-        if ($this.Algorithm -match "^ethash|^etchash|^kawpow|^neoscrypt|progpow" -and $Data.result[0] -notmatch "^TT-Miner") {$HashRate_Value *= 1000}
+        if ($this.Algorithm -match "^ethash|^etchash|^firopow|^kawpow|^neoscrypt|^ubqhash|progpow" -and $Data.result[0] -notmatch "^TT-Miner") {$HashRate_Value *= 1000}
 
         $HashRate_Value = [Int64]$HashRate_Value
 
@@ -1045,7 +1111,7 @@ class CryptoDredge : Miner {
         }
         catch {
             if ($Error.Count){$Error.RemoveAt(0)}
-            Write-Log -Level Info "Failed to connect to miner ($($this.Name)). "
+            Write-Log -Level Info "Failed to connect to miner $($this.Name). "
             return
         }
 
@@ -1085,7 +1151,7 @@ class Dstm : Miner {
         }
         catch {
             if ($Error.Count){$Error.RemoveAt(0)}
-            Write-Log -Level Info "Failed to connect to miner ($($this.Name)). "
+            Write-Log -Level Info "Failed to connect to miner $($this.Name). "
             return
         }
 
@@ -1121,11 +1187,11 @@ class Eminer : Miner {
         $HashRate = [PSCustomObject]@{}
 
         try {
-            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/api/v1/stats" -Timeout $Timeout
+            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/api/v1/stats" -Timeout $Timeout -ForceHttpClient
         }
         catch {
             if ($Error.Count){$Error.RemoveAt(0)}
-            Write-Log -Level Info "Failed to connect to miner ($($this.Name)). "
+            Write-Log -Level Info "Failed to connect to miner $($this.Name). "
             return
         }
         
@@ -1161,11 +1227,11 @@ class EnemyZ : Miner {
         $Difficulty = [PSCustomObject]@{}
 
         try {
-            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/summary?gpuinfo=1" -Timeout $Timeout
+            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/summary?gpuinfo=1" -Timeout $Timeout -ForceHttpClient
         }
         catch {
             if ($Error.Count){$Error.RemoveAt(0)}
-            Write-Log -Level Info "Failed to connect to miner ($($this.Name)). "
+            Write-Log -Level Info "Failed to connect to miner $($this.Name). "
             return
         }
 
@@ -1217,7 +1283,7 @@ class Ethminer : Miner {
         }
         catch {
             if ($Error.Count){$Error.RemoveAt(0)}
-            Write-Log -Level Info "Failed to connect to miner ($($this.Name)). "
+            Write-Log -Level Info "Failed to connect to miner $($this.Name). "
             return
         }
 
@@ -1396,11 +1462,11 @@ class Fireice : Miner {
         $Difficulty = [PSCustomObject]@{}
 
         try {
-            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/api.json" -Timeout $Timeout
+            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/api.json" -Timeout $Timeout -ForceHttpClient
         }
         catch {
             if ($Error.Count){$Error.RemoveAt(0)}
-            Write-Log -Level Info "Failed to connect to miner ($($this.Name)). "
+            Write-Log -Level Info "Failed to connect to miner $($this.Name). "
             return
         }
 
@@ -1441,11 +1507,11 @@ class Gminer : Miner {
         $HashRate = [PSCustomObject]@{}
 
         try {
-            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/stat" -Timeout $Timeout
+            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/stat" -Timeout $Timeout -ForceHttpClient
         }
         catch {
             if ($Error.Count){$Error.RemoveAt(0)}
-            Write-Log -Level Info "Failed to connect to miner ($($this.Name)). "
+            Write-Log -Level Info "Failed to connect to miner $($this.Name). "
             return
         }
 
@@ -1462,7 +1528,8 @@ class Gminer : Miner {
 
             $Accepted_Shares = [Int64]($Data.devices.accepted_shares | Measure-Object -Sum).Sum
             $Rejected_Shares = [Int64]($Data.devices.rejected_shares | Measure-Object -Sum).Sum
-            $this.UpdateShares(0,$Accepted_Shares,$Rejected_Shares)
+            $Stale_Shares    = [Int64]($Data.devices.stale_shares | Measure-Object -Sum).Sum
+            $this.UpdateShares(0,$Accepted_Shares,$Rejected_Shares,$Stale_Shares)
 
             if ($this.Algorithm[1]) {
                 $HashRate_Name = [String]$this.Algorithm[1]
@@ -1473,7 +1540,8 @@ class Gminer : Miner {
 
                     $Accepted_Shares = [Int64]($Data.devices.accepted_shares2 | Measure-Object -Sum).Sum
                     $Rejected_Shares = [Int64]($Data.devices.rejected_shares2 | Measure-Object -Sum).Sum
-                    $this.UpdateShares(1,$Accepted_Shares,$Rejected_Shares)
+                    $Stale_Shares    = [Int64]($Data.devices.stale_shares2 | Measure-Object -Sum).Sum
+                    $this.UpdateShares(1,$Accepted_Shares,$Rejected_Shares,$Stale_Shares)
                 }
             }
         }
@@ -1542,11 +1610,11 @@ class GrinPro : Miner {
         $HashRate = [PSCustomObject]@{}
 
         try {
-            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/api/status" -Timeout $Timeout
+            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/api/status" -Timeout $Timeout -ForceHttpClient
         }
         catch {
             if ($Error.Count){$Error.RemoveAt(0)}
-            Write-Log -Level Info "Failed to connect to miner ($($this.Name)). "
+            Write-Log -Level Info "Failed to connect to miner $($this.Name). "
             return
         }
 
@@ -1611,11 +1679,11 @@ class Jceminer : Miner {
         $Difficulty = [PSCustomObject]@{}
 
         try {
-            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/api.json" -Timeout $Timeout
+            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/api.json" -Timeout $Timeout -ForceHttpClient
         }
         catch {
             if ($Error.Count){$Error.RemoveAt(0)}
-            Write-Log -Level Info "Failed to connect to miner ($($this.Name)). "
+            Write-Log -Level Info "Failed to connect to miner $($this.Name). "
             return
         }
 
@@ -1656,25 +1724,30 @@ class Lol : Miner {
         $HashRate = [PSCustomObject]@{}
 
         try {
-            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/summary" -Timeout $Timeout
+            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/summary" -Timeout $Timeout -ForceHttpClient
         }
         catch {
             if ($Error.Count){$Error.RemoveAt(0)}
-            Write-Log -Level Info "Failed to connect to miner ($($this.Name)). "
+            Write-Log -Level Info "Failed to connect to miner $($this.Name). "
             return
         }
 
-        $HashRate_Name  = [String]$this.Algorithm[0]
-        $HashRate_Value = [Double](ConvertFrom-Hash "$($Data.Session.Performance_Summary)$($Data.Session.Performance_Unit -replace "g?/s$")")
+        $PowerDraw      = [Double]($Data.Workers.Power | Measure-Object -Sum).Sum
 
-        $PowerDraw      = [Double]$Data.Session.TotalPower
+        for ($i=0; $i -lt [int]$Data.Num_Algorithms; $i++) {
+            $HashRate_Name  = [String]$this.Algorithm[$i]
+            $HashRate_Value = [Double]($Data.Algorithms[$i].Total_Performance * $Data.Algorithms[$i].Performance_Factor)
 
-        if ($HashRate_Name -and $HashRate_Value -gt 0) {
-            $HashRate | Add-Member @{$HashRate_Name = $HashRate_Value}
+            if ($HashRate_Name -and $HashRate_Value -gt 0) {
+                $HashRate | Add-Member @{$HashRate_Name = $HashRate_Value}
 
-            $Accepted_Shares = [Int64]$Data.Session.Accepted
-            $Rejected_Shares = [Int64]($Data.Session.Submitted - $Data.Session.Accepted)
-            $this.UpdateShares(0,$Accepted_Shares,$Rejected_Shares)
+                $Accepted_Shares = [Int64]$Data.Algorithms[$i].Total_Accepted
+                $Stale_Shares    = [Int64]$Data.Algorithms[$i].Total_Stales
+                $Rejected_Shares = [Int64]$Data.Algorithms[$i].Total_Rejected
+                $this.UpdateShares($i,$Accepted_Shares,$Rejected_Shares,$Stale_Shares)
+            } elseif ($i -gt 0) {
+                $HashRate = [PSCustomObject]@{}
+            }
         }
 
         $this.AddMinerData($Data,$HashRate,$null,$PowerDraw)
@@ -1702,7 +1775,7 @@ class Luk : Miner {
         }
         catch {
             if ($Error.Count){$Error.RemoveAt(0)}
-            Write-Log -Level Info "Failed to connect to miner ($($this.Name)). "
+            Write-Log -Level Info "Failed to connect to miner $($this.Name). "
             return
         }
 
@@ -1731,19 +1804,19 @@ class MiniZ : Miner {
         $Server = "localhost"
         $Timeout = 10 #seconds
 
-        $Request = '{"id":"1", "method":"getstat"}'
+        $Request = '{ "id":"0", "method":"getstat" }'
         $Response = ""
 
         $HashRate   = [PSCustomObject]@{}
         $Difficulty = [PSCustomObject]@{}
 
         try {
-            $Response = Invoke-TcpRequest $Server $this.Port $Request -Timeout $Timeout -ErrorAction Stop -Quiet
+            $Response = Invoke-TcpRequest $Server $this.Port $Request -Timeout $Timeout -ErrorAction Stop -Quiet -ReadToEnd
             $Data = $Response | ConvertFrom-Json -ErrorAction Stop
         }
         catch {
             if ($Error.Count){$Error.RemoveAt(0)}
-            Write-Log -Level Info "Failed to connect to miner ($($this.Name)). "
+            Write-Log -Level Info "Failed to connect to miner $($this.Name). "
             return
         }
 
@@ -1760,6 +1833,7 @@ class MiniZ : Miner {
 
             $Accepted_Shares  = [Int64]($Data.result.accepted_shares | Measure-Object -Sum).Sum
             $Rejected_Shares  = [Int64]($Data.result.rejected_shares | Measure-Object -Sum).Sum
+            #$Stale_Shares     = [Int64]($Data.result.stale_shares | Measure-Object -Sum).SUm
             $this.UpdateShares(0,$Accepted_Shares,$Rejected_Shares)
         }
 
@@ -1785,29 +1859,31 @@ class Nanominer : Miner {
                 ";Automatic config file created by RainbowMiner",
                 ";Do not edit!",
                 "mport=-$($this.Port)",
-                "webPort = 0",
-                "Watchdog = false",
-                "noLog = true",
+                "webPort=0",
+                "Watchdog=false",
+                "noLog=true",
                 "",
                 "[$($Parameters.Algo)]",
                 "wallet=$($Parameters.Wallet)",
                 "rigName=$($Parameters.Worker)",
-                "pool1 = $($Parameters.Host):$($Parameters.Port)",
-                "devices =$(if ($Parameters.Devices -ne $null) {$Parameters.Devices -join ','})"
+                "pool1=$($Parameters.Host):$($Parameters.Port)",
+                "devices=$(if ($Parameters.Devices -ne $null) {$Parameters.Devices -join ','})",
+                "useSSL=$(if ($Parameters.SSL) {"true"} else {"false"})"
             )
             if ($Parameters.PaymentId -ne $null) {$FileC += "paymentId=$($Parameters.PaymentId)"}
             if ($Parameters.Pass)                {$FileC += "rigPassword=$($Parameters.Pass)"}
             if ($Parameters.Email)               {$FileC += "email=$($Parameters.Email)"}
-            if ($Parameters.Threads)             {$FileC += "cpuThreads = $($Parameters.Threads)"}
+            if ($Parameters.Threads)             {$FileC += "cpuThreads=$($Parameters.Threads)"}
             if ($Parameters.Coin)                {$FileC += "coin=$($Parameters.Coin)"}
             if ($Parameters.Protocol)            {$FileC += "protocol=$($Parameters.Protocol)"}
+            if ($Parameters.LHR)                 {$FileC += "lhr=$($Parameters.LHR)"}
 
             if ($Parameters.ZilWallet -and $Parameters.ZilPool) {
                 $FileC += ""
                 $FileC += "[zil]"
-                $FileC += "wallet = $($Parameters.ZilWallet)"
-                $FileC += "zilEpoch = 0 ; number of DAG epoch for caching"
-                $FileC += "pool1 = $($Parameters.ZilPool)"
+                $FileC += "wallet=$($Parameters.ZilWallet)"
+                $FileC += "zilEpoch=0 ; number of DAG epoch for caching"
+                $FileC += "pool1=$($Parameters.ZilPool)"
             }
 
             $FileC | Out-File "$($Miner_Path)\$($ConfigFile)" -Encoding utf8
@@ -1833,7 +1909,7 @@ class Nanominer : Miner {
         }
         catch {
             if ($Error.Count){$Error.RemoveAt(0)}
-            Write-Log -Level Info "Failed to connect to miner ($($this.Name)). "
+            Write-Log -Level Info "Failed to connect to miner $($this.Name). "
             return
         }
 
@@ -1873,11 +1949,11 @@ class NBminer : Miner {
         $Difficulty = [PSCustomObject]@{}
 
         try {
-            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/api/v1/status" -Timeout $Timeout
+            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/api/v1/status" -Timeout $Timeout -ForceHttpClient
         }
         catch {
             if ($Error.Count){$Error.RemoveAt(0)}
-            Write-Log -Level Info "Failed to connect to miner ($($this.Name)). "
+            Write-Log -Level Info "Failed to connect to miner $($this.Name). "
             return
         }
 
@@ -1941,7 +2017,7 @@ class Nheq : Miner {
         }
         catch {
             if ($Error.Count){$Error.RemoveAt(0)}
-            Write-Log -Level Info "Failed to connect to miner ($($this.Name)). "
+            Write-Log -Level Info "Failed to connect to miner $($this.Name). "
             return
         }
 
@@ -1975,11 +2051,11 @@ class NoncerPro : Miner {
         $HashRate   = [PSCustomObject]@{}
 
         try {
-            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/api" -Timeout $Timeout
+            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/api" -Timeout $Timeout -ForceHttpClient
         }
         catch {
             if ($Error.Count){$Error.RemoveAt(0)}
-            Write-Log -Level Info "Failed to connect to miner ($($this.Name)). "
+            Write-Log -Level Info "Failed to connect to miner $($this.Name). "
             return
         }
 
@@ -2012,11 +2088,11 @@ class Nqminer : Miner {
         $HashRate   = [PSCustomObject]@{}
 
         try {
-            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/api" -Timeout $Timeout
+            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/api" -Timeout $Timeout -ForceHttpClient
         }
         catch {
             if ($Error.Count){$Error.RemoveAt(0)}
-            Write-Log -Level Info "Failed to connect to miner ($($this.Name)). "
+            Write-Log -Level Info "Failed to connect to miner $($this.Name). "
             return
         }
 
@@ -2050,11 +2126,11 @@ class Prospector : Miner {
         $HashRate = [PSCustomObject]@{}
 
         try {
-            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/api/v0/hashrates" -Timeout $Timeout
+            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/api/v0/hashrates" -Timeout $Timeout -ForceHttpClient
         }
         catch {
             if ($Error.Count){$Error.RemoveAt(0)}
-            Write-Log -Level Info "Failed to connect to miner ($($this.Name)). "
+            Write-Log -Level Info "Failed to connect to miner $($this.Name). "
             return
         }
 
@@ -2094,7 +2170,7 @@ class RH : Miner {
         }
         catch {
             if ($Error.Count){$Error.RemoveAt(0)}
-            Write-Log -Level Info "Failed to connect to miner ($($this.Name)). "
+            Write-Log -Level Info "Failed to connect to miner $($this.Name). "
             return
         }
 
@@ -2206,6 +2282,46 @@ class SixMinerWrapper : Miner {
     }
 }
 
+class SPMinerWrapper : Miner {
+
+    [Void]UpdateMinerData () {
+        $MJob = if ($Global:IsLinux) {$this.WrapperJob} else {$this.Job.XJob}
+        if ($MJob.HasMoreData) {
+            $HashRate_Name = $this.Algorithm[0]
+
+            $MJob | Receive-Job | ForEach-Object {
+                $Line = $_ -replace "`n|`r", ""
+                $Line_Simple = $Line -replace "\x1B\[[0-?]*[ -/]*[@-~]", ""
+                if ($Line_Simple -match "accepted:\s*(\d+)/(\d+).+\s+([\d\.]+)\s+([hkMGTP]+)/s") {
+                    $Accepted_Shares = [Int64]$Matches[1]
+                    $Total_Shares    = [Int64]$Matches[2]
+
+                    $HashRate_Value = [Double]"$($Matches[3] -replace "[^\d\.]+")"
+
+                    switch -Regex ($Matches[4]) {
+                        "k" {$HashRate_Value *= 1E+3}
+                        "M" {$HashRate_Value *= 1E+6}
+                        "G" {$HashRate_Value *= 1E+9}
+                        "T" {$HashRate_Value *= 1E+12}
+                        "P" {$HashRate_Value *= 1E+15}
+                    }
+
+                    $HashRate = [PSCustomObject]@{}
+
+                    if ($HashRate_Value -gt 0) {
+                        $HashRate | Add-Member @{$HashRate_Name = $HashRate_Value}
+                        $this.UpdateShares(0,$Accepted_Shares,$Total_Shares - $Accepted_Shares)
+                    }
+
+                    $this.AddMinerData($Line_Simple,$HashRate)
+                }
+            }
+        }
+        $MJob = $null
+        $this.CleanupMinerData()
+    }
+}
+
 class SrbMiner : Miner {
 
     [String]GetArguments() {
@@ -2240,11 +2356,11 @@ class SrbMiner : Miner {
         $HashRate = [PSCustomObject]@{}
 
         try {
-            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)" -Timeout $Timeout
+            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)" -Timeout $Timeout -ForceHttpClient
         }
         catch {
             if ($Error.Count){$Error.RemoveAt(0)}
-            Write-Log -Level Info "Failed to connect to miner ($($this.Name)). "
+            Write-Log -Level Info "Failed to connect to miner $($this.Name). "
             return
         }
 
@@ -2281,18 +2397,22 @@ class SrbMinerMulti : Miner {
         $Difficulty = [PSCustomObject]@{}
 
         try {
-            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)" -Timeout $Timeout
-            $Data = $Data.algorithms | Where-Object {"$(Get-Algorithm $_.name)" -eq [String]$this.BaseAlgorithm[0]}
+            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)" -Timeout $Timeout -ForceHttpClient
         }
         catch {
             if ($Error.Count){$Error.RemoveAt(0)}
-            Write-Log -Level Info "Failed to connect to miner ($($this.Name)). "
+            Write-Log -Level Info "Failed to connect to miner $($this.Name). "
             return
         }
 
+        $Type = if ($Data.total_cpu_workers -gt 0) {"cpu"} else {"gpu"}
+
+        $Data = $Data.algorithms | Where-Object {"$(Get-Algorithm $_.name)" -eq [String]$this.BaseAlgorithm[0]}
+
         $HashRate_Name = [String]$this.Algorithm[0]
-        $HashRate_Value = [double]$Data.hashrate."5min"
-        if (-not $HashRate_Value) {$HashRate_Value = [double]$Data.hashrate.now}
+        $HashRate_Value = [double]$Data.hashrate."1min"
+
+        if (-not $HashRate_Value) {$HashRate_Value = [double]$Data.hashrate.$Type.total}
 
         if ($HashRate_Name -and $HashRate_Value -gt 0) {
             $HashRate   | Add-Member @{$HashRate_Name = $HashRate_Value}
@@ -2389,6 +2509,107 @@ class SwapminerWrapper : Miner {
     }
 }
 
+class TBMiner : Miner {
+    [Void]UpdateMinerData () {
+        if ($this.GetStatus() -ne [MinerStatus]::Running) {return}
+
+        $Server = "127.0.0.1"
+        $Timeout = 10 #seconds
+
+        $Request = ""
+        $Response = ""
+
+        $HashRate   = [PSCustomObject]@{}
+        $Difficulty = $null
+
+        try {
+            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/threads" -Timeout $Timeout -ForceHttpClient
+        }
+        catch {
+            if ($Error.Count){$Error.RemoveAt(0)}
+            Write-Log -Level Info "Failed to connect to miner $($this.Name). "
+            return
+        }
+
+        $HashRate_Name  = [String]$this.Algorithm[0]
+        $HashRate_Value = [Double]($Data.PSObject.Properties.Value.hashrate | Measure-Object -Sum).Sum
+        $PowerDraw      = [Double]($Data.PSObject.Properties.Value.watt | Measure-Object -Sum).Sum
+
+        if ($HashRate_Name -and $HashRate_Value -gt 0) {
+            $HashRate   | Add-Member @{$HashRate_Name = $HashRate_Value}
+
+            try {
+                $DataPool = Invoke-GetUrl "http://$($Server):$($this.Port)/pool" -Timeout $Timeout -ForceHttpClient
+                $Difficulty_Value = [Double]$DataPool.diff
+                if ($Difficulty_Value -gt 0) {
+                    $Difficulty = [PSCustomObject]@{$HashRate_Name = $Difficulty_Value}
+                }
+            }
+            catch {
+                if ($Error.Count){$Error.RemoveAt(0)}
+            }
+
+            $Accepted_Shares  = [Int64]($Data.PSObject.Properties.Value.accepted | Measure-Object -Sum).Sum
+            $Rejected_Shares  = [Int64]($Data.PSObject.Properties.Value.rejected | Measure-Object -Sum).Sum
+            $Stale_Shares     = [Int64]($Data.PSObject.Properties.Value.stale | Measure-Object -Sum).Sum
+            $this.UpdateShares(0,$Accepted_Shares,$Rejected_Shares,$Stale_Shares)
+        }
+
+        $this.AddMinerData($Response,$HashRate,$Difficulty,$PowerDraw)
+
+        $this.CleanupMinerData()
+    }
+}
+
+class TeamblackWrapper : Miner {
+
+    [Void]UpdateMinerData () {
+        $MJob = if ($Global:IsLinux) {$this.WrapperJob} else {$this.Job.XJob}
+        if ($MJob.HasMoreData) {
+            $HashRate_Name = $this.Algorithm[0]
+
+            $MJob | Receive-Job | ForEach-Object {
+                $Line = $_ -replace "`n|`r", ""
+                $Line_Simple = $Line -replace "\x1B\[[0-?]*[ -/]*[@-~]", ""
+                if ($Line_Simple -notmatch "GPU\d" -and $Line_Simple -match "([\d\s\./hkMGTPs]+?)(\d+)/(\d+)[/\s].*\([\d\.]+\)$") {
+                    $Accepted_Shares = [Int64]$Matches[2]
+                    $Rejected_Shares = [Int64]$Matches[3]
+
+                    $Words = "$($Matches[1])".Trim() -split "\s+"
+
+                    $HashRate = [PSCustomObject]@{}
+
+                    $HashRate_Value = [Double]"$($Words[2] -replace "[^\d\.]+")"
+
+                    switch -Regex ($Words[3]) {
+                        "k" {$HashRate_Value *= 1E+3}
+                        "M" {$HashRate_Value *= 1E+6}
+                        "G" {$HashRate_Value *= 1E+9}
+                        "T" {$HashRate_Value *= 1E+12}
+                        "P" {$HashRate_Value *= 1E+15}
+                    }
+
+                    if ($HashRate_Value -gt 0) {
+                        $HashRate | Add-Member @{$HashRate_Name = $HashRate_Value}
+                        $this.UpdateShares(0,$Accepted_Shares,$Rejected_Shares)
+                    }
+
+                    $this.AddMinerData($Line_Simple,$HashRate)
+                } elseif ($Line_Simple -match "Accepted\s+\((\d+)/(\d+)[/)]") {
+                    $Accepted_Shares = [Int64]$Matches[1]
+                    $Total_Shares    = [Int64]$Matches[2]
+                    $this.UpdateShares(0,$Accepted_Shares,$Total_Shares - $Accepted_Shares)
+                } elseif ($Line_Simple -match "GPU\s+(\d+):\s+has\s+timed\sout") {
+                    #GPU has crashed, restart miner
+                    Write-Log -Level Warn "$($this.Name): GPU $($Matches[1]) has timed out - restarting miner"
+                    $this.Restart = $true
+                }
+            }
+        }
+        $MJob = $null
+        $this.CleanupMinerData()
+    }
+}
 
 class Trex : Miner {
     [Void]UpdateMinerData () {
@@ -2404,11 +2625,11 @@ class Trex : Miner {
         $Difficulty = [PSCustomObject]@{}
 
         try {
-            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/summary" -Timeout $Timeout
+            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/summary" -Timeout $Timeout -ForceHttpClient
         }
         catch {
             if ($Error.Count){$Error.RemoveAt(0)}
-            Write-Log -Level Info "Failed to connect to miner ($($this.Name)). "
+            Write-Log -Level Info "Failed to connect to miner $($this.Name). "
             return
         }
 
@@ -2431,6 +2652,29 @@ class Trex : Miner {
             $Accepted_Shares  = [Int64]$Data.accepted_count
             $Rejected_Shares  = [Int64]$Data.rejected_count
             $this.UpdateShares(0,$Accepted_Shares,$Rejected_Shares)
+        }
+
+        if ($this.Algorithm.Count -eq 2) {
+
+            $HashRate_Name = [String]$this.Algorithm[1]
+
+            $HashRate_Value   = [Double]$Data.dual_stat.hashrate
+            $HashRateGPUs_Value = [Double]($Data.dual_stat.gpus.hashrate | Measure-Object -Sum).Sum
+            if ($HashRate_Value -le $HashRateGPUs_Value*0.6) {
+                $HashRate_Value = $HashRateGPUs_Value
+            }
+
+            if ($HashRate_Name -and $HashRate_Value -gt 0) {
+                $HashRate   | Add-Member @{$HashRate_Name = $HashRate_Value}
+
+                $Difficulty_Value = ConvertFrom-Hash "$($Data.dual_stat.active_pool.difficulty)"
+                $Difficulty | Add-Member @{$HashRate_Name = $Difficulty_Value}
+
+                $Accepted_Shares  = [Int64]$Data.dual_stat.accepted_count
+                $Rejected_Shares  = [Int64]$Data.dual_stat.rejected_count
+                $this.UpdateShares(1,$Accepted_Shares,$Rejected_Shares)
+            }
+
         }
 
         $this.AddMinerData($Response,$HashRate,$Difficulty,$PowerDraw)
@@ -2493,7 +2737,9 @@ class Xgminer : Miner {
         $Server = "localhost"
         $Timeout = 10 #seconds
 
-        $Request = @{command = "summary"; parameter = ""} | ConvertTo-Json -Depth 10 -Compress
+        $DualMining = $this.Algorithm.Count -eq 2
+
+        $Request = @{command = "summary$(if ($DualMining) {"+summary2"})"; parameter = ""} | ConvertTo-Json -Depth 10 -Compress
         $Response = ""
 
         $HashRate   = [PSCustomObject]@{}
@@ -2505,7 +2751,7 @@ class Xgminer : Miner {
         }
         catch {
             if ($Error.Count){$Error.RemoveAt(0)}
-            Write-Log -Level Info "Failed to connect to miner ($($this.Name)). "
+            Write-Log -Level Info "Failed to connect to miner $($this.Name). "
             return
         }
 
@@ -2537,6 +2783,38 @@ class Xgminer : Miner {
             $Accepted_Shares  = [Int64]$Data.SUMMARY.accepted
             $Rejected_Shares  = [Int64]$Data.SUMMARY.rejected
             $this.UpdateShares(0,$Accepted_Shares,$Rejected_Shares)
+
+            if ($DualMining) {
+                $HashRate_Name = [String]$this.Algorithm[1]
+                $HashRate_Value = If ($Data.SUMMARY2.HS_5s) { [Double]$Data.SUMMARY2.HS_5s }
+                elseif ($Data.SUMMARY2.KHS_5s) { [Double]$Data.SUMMARY2.KHS_5s * 1e3 }
+                elseif ($Data.SUMMARY2.MHS_5s) { [Double]$Data.SUMMARY2.MHS_5s * 1e6 }
+                elseif ($Data.SUMMARY2.GHS_5s) { [Double]$Data.SUMMARY2.GHS_5s * 1e9 }
+                elseif ($Data.SUMMARY2.THS_5s) { [Double]$Data.SUMMARY2.THS_5s * 1e12 }
+                elseif ($Data.SUMMARY2.PHS_5s) { [Double]$Data.SUMMARY2.PHS_5s * 1e15 }
+                elseif ($Data.SUMMARY2.KHS_30s) { [Double]$Data.SUMMARY2.KHS_30s * 1e3 }
+                elseif ($Data.SUMMARY2.MHS_30s) { [Double]$Data.SUMMARY2.MHS_30s * 1e6 }
+                elseif ($Data.SUMMARY2.GHS_30s) { [Double]$Data.SUMMARY2.GHS_30s * 1e9 }
+                elseif ($Data.SUMMARY2.THS_30s) { [Double]$Data.SUMMARY2.THS_30s * 1e12 }
+                elseif ($Data.SUMMARY2.PHS_30s) { [Double]$Data.SUMMARY2.PHS_30s * 1e15 }
+                elseif ($Data.SUMMARY2.HS_av) { [Double]$Data.SUMMARY2.HS_av }
+                elseif ($Data.SUMMARY2.KHS_av) { [Double]$Data.SUMMARY2.KHS_av * 1e3 }
+                elseif ($Data.SUMMARY2.MHS_av) { [Double]$Data.SUMMARY2.MHS_av * 1e6 }
+                elseif ($Data.SUMMARY2.GHS_av) { [Double]$Data.SUMMARY2.GHS_av * 1e9 }
+                elseif ($Data.SUMMARY2.THS_av) { [Double]$Data.SUMMARY2.THS_av * 1e12 }
+                elseif ($Data.SUMMARY2.PHS_av) { [Double]$Data.SUMMARY2.PHS_av * 1e15 }
+
+                if ($HashRate_Name -and $HashRate_Value -gt 0) {
+                    $HashRate   | Add-Member @{$HashRate_Name = $HashRate_Value}
+
+                    $Difficulty_Value = [Double]$Data.SUMMARY2.Difficulty_Accepted
+                    $Difficulty | Add-Member @{$HashRate_Name = $Difficulty_Value}
+
+                    $Accepted_Shares  = [Int64]$Data.SUMMARY2.accepted
+                    $Rejected_Shares  = [Int64]$Data.SUMMARY2.rejected
+                    $this.UpdateShares(1,$Accepted_Shares,$Rejected_Shares)
+                }
+            }
         }
 
         $this.AddMinerData($Response,$HashRate,$Difficulty)
@@ -2638,11 +2916,11 @@ class Xmrig : Miner {
         $Difficulty = [PSCustomObject]@{}
 
         try {
-            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/api.json" -Timeout $Timeout
+            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/api.json" -Timeout $Timeout -ForceHttpClient
         }
         catch {
             if ($Error.Count){$Error.RemoveAt(0)}
-            Write-Log -Level Info "Failed to connect to miner ($($this.Name)). "
+            Write-Log -Level Info "Failed to connect to miner $($this.Name). "
             return
         }
         
@@ -2787,11 +3065,11 @@ class Xmrig3 : Miner {
         $Difficulty = [PSCustomObject]@{}
 
         try {
-            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/api.json" -Timeout $Timeout
+            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/api.json" -Timeout $Timeout -ForceHttpClient
         }
         catch {
             if ($Error.Count){$Error.RemoveAt(0)}
-            Write-Log -Level Info "Failed to connect to miner ($($this.Name)). "
+            Write-Log -Level Info "Failed to connect to miner $($this.Name). "
             return
         }
 
@@ -2840,7 +3118,7 @@ class Xmrig6 : Miner {
 
         $Algo              = $Parameters.Algorithm
         $Algo0             = $Parameters.Algorithm -replace "/.+$"
-        $Device            = Switch($Parameters.Vendor) {"AMD" {"opencl"}; "NVIDIA" {"cuda"}; default {"cpu"}}
+        $Device            = Switch($Parameters.Vendor) {"AMD" {"opencl";break}; "INTEL" {"opencl";break}; "NVIDIA" {"cuda";break}; default {"cpu"}}
 
         try {
             if (Test-Path $ThreadsConfigFile) {
@@ -2853,16 +3131,18 @@ class Xmrig6 : Miner {
                 $ArgumentList = ("--algo=$($Parameters.Algorithm) --config=$ThreadsConfigFN $($Parameters.DeviceParams) $($Parameters.Params)" -replace "\s+",' ').Trim()
                 $Job = Start-SubProcess -FilePath $this.Path -ArgumentList $ArgumentList -WorkingDirectory $Miner_Path -LogPath (Join-Path $Miner_Path $LogFile) -Priority ($this.DeviceName | ForEach-Object {if ($_ -like "CPU*") {$this.Priorities.CPU} else {$this.Priorities.GPU}} | Measure-Object -Maximum | Select-Object -ExpandProperty Maximum) -ShowMinerWindow $true -IsWrapper ($this.API -eq "Wrapper") -SetLDLIBRARYPATH:$this.SetLDLIBRARYPATH
                 if ($Job.XJob) {
-                    $wait = 0
-                    While ($wait -lt 60) {
-                        if (($ThreadsConfig = @(Get-Content $ThreadsConfigFile -Raw -ErrorAction Ignore | ConvertFrom-Json -ErrorAction Ignore).$Device | Select-Object)) {
+                    $WaitSeconds = if ($Device -eq "cpu") {30} else {90}
+                    $StopWatch = [System.Diagnostics.StopWatch]::New()
+                    $StopWatch.Restart()
+                    do {
+                        if ($ThreadsConfig = (Get-Content $ThreadsConfigFile -Raw -ErrorAction Ignore | ConvertFrom-Json -ErrorAction Ignore).$Device | Select-Object) {
                             ConvertTo-Json $ThreadsConfig -Depth 10 | Set-Content $ThreadsConfigFile -Force
                             break
                         }
                         Start-Sleep -Milliseconds 500
                         $MiningProcess = $Job.ProcessId | Foreach-Object {Get-Process -Id $_ -ErrorAction Ignore | Select-Object Id,HasExited}
-                        if ((-not $MiningProcess -and $Job.XJob.State -eq "Running") -or ($MiningProcess -and ($MiningProcess | Where-Object {-not $_.HasExited} | Measure-Object).Count -eq 1)) {$wait++} else {break}
-                    }
+                    } while ($StopWatch.Elapsed.TotalSeconds -lt $WaitSeconds -and ((-not $MiningProcess -and $Job.XJob.State -eq "Running") -or ($MiningProcess -and ($MiningProcess | Where-Object {-not $_.HasExited} | Measure-Object).Count -eq 1)))
+                    $StopWatch = $null
                 }
                 if ($Job) {
                     Stop-SubProcess -Job $Job -Title "Miner $($this.Name) (prerun)"
@@ -2886,6 +3166,9 @@ class Xmrig6 : Miner {
                     $Algo = if ($ThreadsConfig.$Algo) {$Algo} else {$Algo0}
 
                     if ($Device -eq "cpu") {
+                        if ($Algo -eq "ghostrider") {
+                            $Parameters.Config.$Device | Add-Member "max-threads-hint" ([int](100 * $Parameters.Threads / $Global:GlobalCPUInfo.Threads)) -Force
+                        }
                         $cix = @{}
                         $ThreadsAffinity = $ThreadsConfig.$Algo | Foreach-Object {if ($_ -is [array] -and $_.Count -eq 2) {$cix["k$($_[1])"] = $_[0];$_[1]} else {$_}}
 
@@ -2926,7 +3209,9 @@ class Xmrig6 : Miner {
             if (-not (Test-Path $RunConfigFile) -or (Test-Path $RunConfigFile -OlderThan $LastModified)) {
                 $RunConfig = Get-Content $ConfigFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
                 $RunConfig | Add-Member pools $Parameters.Pools -Force
-
+                foreach ($par in @("algo-perf","rebench-algo","bench-algo-time","algo-min-time")) {
+                    if ($par -in $Parameters.Config.PSObject.Properties.Name) {$RunConfig | Add-Member $par $Parameters.Config.$par -Force}
+                }
                 Set-ContentJson -PathToFile $RunConfigFile -Data $RunConfig > $null
             }
         }
@@ -2952,11 +3237,11 @@ class Xmrig6 : Miner {
         $Difficulty = [PSCustomObject]@{}
 
         try {
-            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/api.json" -Timeout $Timeout
+            $Data = Invoke-GetUrl "http://$($Server):$($this.Port)/api.json" -Timeout $Timeout -ForceHttpClient
         }
         catch {
             if ($Error.Count){$Error.RemoveAt(0)}
-            Write-Log -Level Info "Failed to connect to miner ($($this.Name)). "
+            Write-Log -Level Info "Failed to connect to miner $($this.Name). "
             return
         }
 

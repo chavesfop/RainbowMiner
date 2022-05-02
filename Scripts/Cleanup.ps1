@@ -25,6 +25,11 @@ $AddAlgorithm = @()
 $RemoveMinerStats = @()
 $RemovePoolStats = @()
 try {
+
+    ### 
+    ### BEGIN OF VERSION CHECKS
+    ###
+
     if ($Version -le (Get-Version "3.8.3.7")) {
         $Changes = 0
         $PoolsActual = Get-Content "$PoolsConfigFile" -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
@@ -1267,6 +1272,287 @@ try {
         }
     }
 
+    if ($Version -le (Get-Version "4.7.2.0")) {
+        Get-ChildItem "Data\openclplatforms.json" -ErrorAction Ignore | Where-Object {$_.LastWriteTimeUtc -lt (Get-Date "May 27, 2021")} | Foreach-Object {
+            $ChangesTotal++
+            Remove-Item $_.FullName -Force -ErrorAction Ignore
+        }
+    }
+
+    if ($Version -le (Get-Version "4.7.2.6")) {
+        Get-ChildItem "Bin\ANY-Xmrig" -Filter "run_*.json" -File -ErrorAction Ignore | Foreach-Object {
+            $ChangesTotal++
+            Remove-Item $_.FullName -Force -ErrorAction Ignore
+        }
+    }
+
+    if ($Version -le (Get-Version "4.7.4.6")) {
+        $AddAlgorithm += @("EtchashNH","EtchashFP","EthashNH","EthashFP","FiroPoW")
+    }
+
+    if ($Version -le (Get-Version "4.7.5.2")) {
+        $AddAlgorithm += @("MinotaurX")
+    }
+
+    if ($Version -le (Get-Version "4.7.5.3")) {
+        $Changes = 0
+        $ConfigActual = Get-Content "$ConfigFile" -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+        if ($ConfigActual.ExcludeServerConfigVars -ne "`$ExcludeServerConfigVars" -and (Get-ConfigArray $ConfigActual.ExcludeServerConfigVars) -inotcontains "OpenCLPlatformSorting") {
+            $ConfigActual | Add-Member ExcludeServerConfigVars "$((@(Get-ConfigArray $ConfigActual.ExcludeServerConfigVars | Select-Object) + "OpenCLPlatformSorting") -join ',')" -Force
+            $Changes++;
+        }
+        if ($Changes) {
+            $ConfigActual | ConvertTo-Json -Depth 10 | Set-Content $ConfigFile -Encoding UTF8
+            $ChangesTotal += $Changes
+        }
+    }
+
+    if ($Version -le (Get-Version "4.7.6.1")) {
+        $Changes = 0
+        $ConfigActual = Get-Content "$ConfigFile" -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+        if ($ConfigActual.ExcludeServerConfigVars -ne "`$ExcludeServerConfigVars" -and (Get-ConfigArray $ConfigActual.ExcludeServerConfigVars) -inotcontains "ProxyUsername") {
+            $ConfigActual | Add-Member ExcludeServerConfigVars "$((@(Get-ConfigArray $ConfigActual.ExcludeServerConfigVars | Select-Object) + "ProxyUsername") -join ',')" -Force
+            $Changes++;
+        }
+        if ($ConfigActual.ExcludeServerConfigVars -ne "`$ExcludeServerConfigVars" -and (Get-ConfigArray $ConfigActual.ExcludeServerConfigVars) -inotcontains "ProxyPassword") {
+            $ConfigActual | Add-Member ExcludeServerConfigVars "$((@(Get-ConfigArray $ConfigActual.ExcludeServerConfigVars | Select-Object) + "ProxyPassword") -join ',')" -Force
+            $Changes++;
+        }
+        if ($Changes) {
+            $ConfigActual | ConvertTo-Json -Depth 10 | Set-Content $ConfigFile -Encoding UTF8
+            $ChangesTotal += $Changes
+        }
+    }
+
+    if ($Version -le (Get-Version "4.7.7.2")) {
+        $RemovePoolStats += @("2MinersSolo_*_Profit.txt")
+        $RemovePoolStats += @("ZergPoolParty_*_Profit.txt")
+        $RemovePoolStats += @("ZergPoolSolo_*_Profit.txt")
+        $RemovePoolStats += @("ZergPoolCoinsParty_*_Profit.txt")
+        $RemovePoolStats += @("ZergPoolCoinsSolo_*_Profit.txt")
+    }
+
+    if ($Version -le (Get-Version "4.7.7.9")) {
+        $RemoveMinerStats += @("*-SrbMinerMulti-*_HashRate.txt")
+    }
+
+    if ($Version -le (Get-Version "4.7.8.3")) {
+        Get-ChildItem "Bin\ANY-Xmrig" -Filter "config_Take2_*.json" -File -ErrorAction Ignore | Foreach-Object {
+            $ChangesTotal++
+            Remove-Item $_.FullName -Force -ErrorAction Ignore
+        }
+    }
+
+    if ($Version -le (Get-Version "4.7.9.8")) {
+        $AddAlgorithm += @("SHA256ton")
+        if ($existingFiles = (Get-ChildItem "Bin\ANY-Xmrig" -Filter "config_Take2_*.json" -File -ErrorAction Ignore)) {
+            $now = Get-Date
+            $ChangesTotal++
+            $existingFiles.ForEach('LastWriteTime', $now)
+            $existingFiles.ForEach('LastAccessTime', $now)
+        }
+    }
+
+    if ($Version -le (Get-Version "4.8.0.2")) {
+        $AddAlgorithm += @("Blake3")
+    }
+
+    if ($Version -le (Get-Version "4.8.0.4")) {
+        $AddAlgorithm += @("Xdag")
+        $RemoveMinerStats += @("NVIDIA-Lolminer-*hash-*SHA256ton_HashRate.txt")
+    }
+
+    if ($Version -le (Get-Version "4.8.0.6")) {
+        $AddAlgorithm += @("Dynamo")
+    }
+
+    if ($Version -le (Get-Version "4.8.0.7")) {
+        foreach ($lolAlgo in @("Ethash","Etchash","UbqHash")) {
+            Get-ChildItem ".\Stats\Miners" -Filter "*lolminer-$($lolAlgo)-*_Hashrate.txt" -File | Foreach-Object {$ChangesTotal++;Rename-Item $_.FullName ($_.Name -replace "lolminer-$($lolAlgo)-","lolminer-$($lolAlgo)_SHA256ton-") -Force -ErrorAction Ignore}
+        }
+        Get-ChildItem ".\Stats\Miners" -Filter "*Teamred-Ethash-*_Hashrate.txt" -File | Foreach-Object {$ChangesTotal++;Rename-Item $_.FullName ($_.Name -replace "Teamred-Ethash-","Teamred-Ethash_SHA256ton-") -Force -ErrorAction Ignore}
+        $RemoveMinerStats += @("CPU-SrbminerMulti-*_HashRate.txt")
+    }
+
+    if ($Version -le (Get-Version "4.8.0.8")) {
+        $RemoveMinerStats += @("CPU-SrbminerMulti-*Dynamo_HashRate.txt")
+    }
+
+    if ($Version -le (Get-Version "4.8.1.8")) {
+        $RemovePoolStats += @("*_AION_Profit.txt")
+    }
+
+    if ($Version -le (Get-Version "4.8.1.9")) {
+        foreach ($lolAlgo in @("Ethash","Etchash","UbqHash")) {
+            Get-ChildItem ".\Stats\Miners" -Filter "*lolminer-$($lolAlgo)_SHA256ton-*_Hashrate.txt" -File | Foreach-Object {$ChangesTotal++;Rename-Item $_.FullName ($_.Name -replace "lolminer-$($lolAlgo)_SHA256ton-","lolminer-$($lolAlgo)-SHA256ton-") -Force -ErrorAction Ignore}
+            Get-ChildItem ".\Stats\Miners" -Filter "*lolminer-$($lolAlgo)_Blake3-*_Hashrate.txt" -File | Foreach-Object {$ChangesTotal++;Rename-Item $_.FullName ($_.Name -replace "lolminer-$($lolAlgo)_Blake3-","lolminer-$($lolAlgo)-Blake3-") -Force -ErrorAction Ignore}
+        }
+    }
+
+    if ($Version -le (Get-Version "4.8.2.3")) {
+        $Changes_MRRAlgorithms = 0
+        $MRRAlgorithmsConfigActual = [PSCustomObject]@{}
+        if (Test-Path $MRRAlgorithmsConfigFile) {
+            try {
+                $MRRAlgorithmsConfigActual = Get-Content $MRRAlgorithmsConfigFile -Raw | ConvertFrom-Json -ErrorAction Ignore
+            } catch {
+                $MRRAlgorithmsConfigActual = [PSCustomObject]@{}
+            }
+        }
+
+        if (Test-Path $AlgorithmsConfigFile) {
+            $Changes_Algorithms = 0
+            try {
+                $AlgorithmsConfigActual = Get-Content $AlgorithmsConfigFile -Raw | ConvertFrom-Json -ErrorAction Ignore
+                $AlgorithmsConfigActual.PSObject.Properties.Name | Foreach-Object {
+                    $Algo = $_
+                    $MRREnable = $MRRAllowExtensions = $MRRPriceModifierPercent = ""
+                    if ([bool]$AlgorithmsConfigActual.$_.PSObject.Properties["MRREnable"]) {
+                        $MRREnable = "$($AlgorithmsConfigActual.$_.MRREnable)"
+                        $AlgorithmsConfigActual.$_.PSObject.Properties.Remove("MRREnable")
+                        $Changes_Algorithms++
+                    }
+                    if ([bool]$AlgorithmsConfigActual.$_.PSObject.Properties["MRRAllowExtensions"]) {
+                        $MRRAllowExtensions = "$($AlgorithmsConfigActual.$_.MRRAllowExtensions)"
+                        $AlgorithmsConfigActual.$_.PSObject.Properties.Remove("MRRAllowExtensions")
+                        $Changes_Algorithms++
+                    }
+                    if ([bool]$AlgorithmsConfigActual.$_.PSObject.Properties["MRRPriceModifierPercent"]) {
+                        $MRRPriceModifierPercent = "$($AlgorithmsConfigActual.$_.MRRPriceModifierPercent)"
+                        $AlgorithmsConfigActual.$_.PSObject.Properties.Remove("MRRPriceModifierPercent")
+                        $Changes_Algorithms++
+                    }
+                    if ($MRRAllowExtensions -ne "" -or $MRRPriceModifierPercent -ne "" -or $MRREnable -eq "0") {
+                        $MRREnable = if (Get-Yes $MRREnable) {"1"} else {"0"}
+                        if ($MRRAlgorithmsConfigActual.$Algo) {
+                            $MRRAlgorithmsConfigActual.$Algo.Enable = $MRREnable
+                            $MRRAlgorithmsConfigActual.$Algo.AllowExtensions = $MRRAllowExtensions
+                            $MRRAlgorithmsConfigActual.$Algo.PriceModifierPercent = $MRRPriceModifierPercent
+                        } else {
+                            $MRRAlgorithmsConfigActual | Add-Member $Algo ([PSCustomObject]@{Enable=$MRREnable;PriceModifierPercent=$MRRPriceModifierPercent;PriceFactor="";PriceFactorMin="";PriceFactorDecayPercent="";PriceFactorDecayTime="";PriceRiseExtensionPercent="";AllowExtensions=$MRRAllowExtensions}) -Force
+                        }
+                        $Changes_MRRAlgorithms++
+                    }
+                }
+            } catch {
+            }
+
+            if ($Changes_Algorithms) {
+                $AlgorithmsConfigActual | ConvertTo-Json -Depth 10 | Set-Content $AlgorithmsConfigFile -Encoding UTF8
+            }
+            if ($Changes_MRRAlgorithms) {
+                $MRRAlgorithmsConfigActual | ConvertTo-Json -Depth 10 | Set-Content $MRRAlgorithmsConfigFile -Encoding UTF8
+            }
+
+            $ChangesTotal += $Changes_Algorithms + $Changes_MRRAlgorithms
+        }
+
+        Get-ChildItem ".\Stats\Miners" -Filter "NVIDIA-MiniZ-*Etchash_Hashrate.txt" -File | Foreach-Object {
+            try {
+                $CurrentStat = Get-Content $_.FullName -Raw | ConvertFrom-Json -ErrorAction Stop
+                if ($CurrentStat.Live -eq 0) {
+                    Remove-Item $_.FullName -Force -ErrorAction Stop
+                    $ChangesTotal++
+                }
+            } catch {}
+        }
+    }
+
+    if ($Version -le (Get-Version "4.8.2.6")) {
+        try {
+            $PoolsActual  = Get-Content "$PoolsConfigFile" -ErrorAction Ignore | ConvertFrom-Json -ErrorAction Ignore
+            if ([bool]$PoolsActual.PSObject.Properties["WoolyPooly"] -and [bool]$PoolsActual.WoolyPooly.PSObject.Properties["Penalty"] -and $PoolsActual.WoolyPooly.Penalty -in @("","0")) {
+                $PoolsActual.WoolyPooly.Penalty = "30"
+                Set-ContentJson -PathToFile $PoolsConfigFile -Data $PoolsActual > $null
+                $ChangesTotal++
+            }
+        } catch {}
+    }
+
+    if ($Version -le (Get-Version "4.8.2.8")) {
+        try {
+            $PoolsActual  = Get-Content "$PoolsConfigFile" -ErrorAction Ignore | ConvertFrom-Json -ErrorAction Ignore
+            if ([bool]$PoolsActual.PSObject.Properties["2MinersAE"] -and -not $PoolsActual."2MinersAE".CoinSymbol) {
+                if ([bool]$PoolsActual."2MinersAE".PSObject.Properties["CoinSymbol"]) {
+                    $PoolsActual."2MinersAE".CoinSymbol = "ETH"
+                } else {
+                    $PoolsActual."2MinersAE" | Add-Member CoinSymbol "ETH" -Force
+                }
+                Set-ContentJson -PathToFile $PoolsConfigFile -Data $PoolsActual > $null
+                $ChangesTotal++
+            }
+        } catch {}
+    }
+
+    if ($Version -le (Get-Version "4.8.3.0")) {
+        $RemovePoolStats += @("HeroMiners_CTXC_Profit.txt")
+    }
+
+    if ($Version -le (Get-Version "4.8.3.1")) {
+        try {
+            $PoolsActual  = Get-Content "$PoolsConfigFile" -ErrorAction Ignore | ConvertFrom-Json -ErrorAction Ignore
+            $Changes_Removal = 0
+            if ([bool]$PoolsActual.PSObject.Properties["ProHashingCoins"]) {
+                if ([bool]$PoolsActual.ProHashingCoins.PSObject.Properties["BTC"]) {
+                    $PoolsActual.ProHashingCoins.PSObject.Properties.Remove("BTC")
+                    $Changes_Removal++
+                }
+                if ([bool]$PoolsActual.ProHashingCoins.PSObject.Properties["BTC-Params"]) {
+                    $PoolsActual.ProHashingCoins.PSObject.Properties.Remove("BTC-Params")
+                    $Changes_Removal++
+                }
+            }
+            if ($Changes_Removal) {
+                Set-ContentJson -PathToFile $PoolsConfigFile -Data $PoolsActual > $null
+                $ChangesTotal += $Changes_Removal
+            }
+        } catch {}
+    }
+
+    if ($Version -le (Get-Version "4.8.3.2")) {
+        try {
+            $PoolsActual  = Get-Content "$PoolsConfigFile" -ErrorAction Ignore | ConvertFrom-Json -ErrorAction Ignore
+            $Changes_Removal = 0
+            if ([bool]$PoolsActual.PSObject.Properties["ProHashingCoins"]) {
+                if ([bool]$PoolsActual.ProHashingCoins.PSObject.Properties["AECurrency"]) {
+                    $PoolsActual.ProHashingCoins.PSObject.Properties.Remove("AECurrency")
+                    $Changes_Removal++
+                }
+            }
+            if ([bool]$PoolsActual.PSObject.Properties["ProHashingCoinsSolo"]) {
+                if ([bool]$PoolsActual.ProHashingCoinsSolo.PSObject.Properties["AECurrency"]) {
+                    $PoolsActual.ProHashingCoinsSolo.PSObject.Properties.Remove("AECurrency")
+                    $Changes_Removal++
+                }
+            }
+            if ($Changes_Removal) {
+                Set-ContentJson -PathToFile $PoolsConfigFile -Data $PoolsActual > $null
+                $ChangesTotal += $Changes_Removal
+            }
+        } catch {}
+    }
+
+    if ($Version -le (Get-Version "4.8.3.3")) {
+        $Changes = 0
+        $ConfigActual = Get-Content "$ConfigFile" -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+        if ($ConfigActual.ExcludeMinerName -ne "`$ExcludeMinerName" -and (Get-ConfigArray $ConfigActual.ExcludeMinerName) -inotcontains "Nsgminer") {
+            $ConfigActual | Add-Member ExcludeMinerName "$((@(Get-ConfigArray $ConfigActual.ExcludeMinerName | Select-Object) + "Nsgminer") -join ',')" -Force
+            $Changes++
+        }
+        if ($ConfigActual.ServerConfigName -ne "`$ServerConfigName" -and (Get-ConfigArray $ConfigActual.ServerConfigName) -inotcontains "mrralgorithms") {
+            $ConfigActual | Add-Member ServerConfigName "$((@(Get-ConfigArray $ConfigActual.ServerConfigName | Select-Object) + "mrralgorithms") -join ',')" -Force
+            $Changes++;
+        }
+        if ($Changes) {
+            $ConfigActual | ConvertTo-Json -Depth 10 | Set-Content $ConfigFile -Encoding UTF8
+            $ChangesTotal += $Changes
+        }
+    }
+
+    ###
+    ### END OF VERSION CHECKS
+    ###
+
     # remove mrrpools.json from cache
     Get-ChildItem "Cache\9FB0DC7AA798CEB4B4B7CB39F6E0CD9C.asy" -ErrorAction Ignore | Foreach-Object {$ChangesTotal++;Remove-Item $_.FullName -Force -ErrorAction Ignore}
 
@@ -1349,7 +1635,7 @@ try {
 
     if ($MinersConfigCleanup) {
         $MinersContentBaseNames = @($MinersContent | Where-Object {$_.BaseName} | Select-Object -ExpandProperty BaseName)
-        $AllDevicesModels = @(Get-DeviceSubsets $AllDevices | Select-Object -ExpandProperty Model -Unique)
+        $AllDevicesModels = @($AllDevices | Select-Object -ExpandProperty Model -Unique)
         $MinersSave = [PSCustomObject]@{}
         $MinersActual = Get-Content "$MinersConfigFile" -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
         $MinersActual.PSObject.Properties | Where-Object {$_.MemberType -eq "NoteProperty"} | Foreach-Object {
@@ -1367,10 +1653,14 @@ try {
                 }
             }
         }
-        $MinersActualSave = [PSCustomObject]@{}
-        $MinersSave.PSObject.Properties.Name | Sort-Object | Foreach-Object {$MinersActualSave | Add-Member $_ @($MinersSave.$_ | Sort-Object MainAlgorithm,SecondaryAlgorithm)}
-        Set-ContentJson -PathToFile $MinersConfigFile -Data $MinersActualSave > $null
-        $ChangesTotal++
+        $MinersActual_Count = ($MinersActual.PSObject.Properties.Value | Measure-Object).Count
+        $MinersSave_Count   = ($MinersSave.PSObject.Properties.Value | Measure-Object).Count
+        if ($MinersSave_Count) {
+            $MinersActualSave = [PSCustomObject]@{}
+            $MinersSave.PSObject.Properties.Name | Sort-Object | Foreach-Object {$MinersActualSave | Add-Member $_ @($MinersSave.$_ | Sort-Object MainAlgorithm,SecondaryAlgorithm)}
+            Set-ContentJson -PathToFile $MinersConfigFile -Data $MinersActualSave > $null
+            $ChangesTotal += $MinersActual_Count - $MinersSave_Count
+        }
     }
 
     if ($CacheCleanup) {if (Test-Path "Cache") {Get-ChildItem "Cache" -Filter "*.asy" | Foreach-Object {$ChangesTotal++;Remove-Item $_.FullName -Force -ErrorAction Ignore}}}

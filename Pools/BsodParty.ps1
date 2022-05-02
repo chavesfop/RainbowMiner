@@ -68,7 +68,7 @@ $PoolCoins_Request | Get-Member -MemberType NoteProperty -ErrorAction Ignore | S
     $Pool_Key = "$($Pool_Algorithm)_$($Pool_CoinSymbol)".ToLower()
     $Pool_PoolFee = if ($PoolCoins_Request.$Pool_CoinSymbol.fees_solo -ne $null) {$PoolCoins_Request.$Pool_CoinSymbol.fees_solo} else {$Pool_Fee}
     $Pool_DataWindow = $DataWindow
-    $Pool_EthProxy = if ($Pool_Algorithm_Norm -match $Global:RegexAlgoHasEthproxy) {"minerproxy"} elseif ($Pool_Algorithm_Norm -eq "KawPOW") {"stratum"} else {$null}
+    $Pool_EthProxy = if ($Pool_Algorithm_Norm -match $Global:RegexAlgoHasEthproxy) {"minerproxy"} elseif ($Pool_Algorithm_Norm -match $Global:RegexAlgoIsProgPow) {"stratum"} else {$null}
 
     #$Divisor = 1e9 * [Double]$Pool_Request.$Pool_Algorithm.mbtc_mh_factor
 
@@ -78,20 +78,16 @@ $PoolCoins_Request | Get-Member -MemberType NoteProperty -ErrorAction Ignore | S
         default {1}
     })
 
-    $Pool_TSL = $PoolCoins_Request.$Pool_CoinSymbol.timesincelast_solo
-    $Pool_BLK = $PoolCoins_Request.$Pool_CoinSymbol."24h_blocks_solo"
-
     if (-not $InfoOnly) {
         if ($Pool_Request -and $Pool_Request.$Pool_Key) {
             $NewStat = $false; if (-not (Test-Path "Stats\Pools\$($Name)_$($Pool_CoinSymbol)_Profit.txt")) {$NewStat = $true; $DataWindow = "estimate_last24h"}
             $Pool_Price = Get-YiiMPValue $Pool_Request.$Pool_Key -DataWindow $DataWindow -Factor $Pool_Factor
-            $Stat = Set-Stat -Name "$($Name)_$($Pool_CoinSymbol)_Profit" -Value $Pool_Price -Duration $(if ($NewStat) {New-TimeSpan -Days 1} else {$StatSpan}) -ChangeDetection $(-not $NewStat) -Actual24h $($Pool_Request.$_.actual_last24h/1000) -Estimate24h $($Pool_Request.$_.estimate_last24h) -HashRate $PoolCoins_Request.$Pool_CoinSymbol.hashrate_solo -BlockRate $Pool_BLK -Quiet
+            $Stat = Set-Stat -Name "$($Name)_$($Pool_CoinSymbol)_Profit" -Value $Pool_Price -Duration $(if ($NewStat) {New-TimeSpan -Days 1} else {$StatSpan}) -ChangeDetection $false -Actual24h $($Pool_Request.$_.actual_last24h/1000) -Estimate24h $($Pool_Request.$_.estimate_last24h) -Difficulty $PoolCoins_Request.$Pool_CoinSymbol.difficulty -Quiet
         } else {
             $Divisor = $Pool_Factor * 1e9
-            $Stat = Set-Stat -Name "$($Name)_$($Pool_CoinSymbol)_Profit" -Value ([Double]$PoolCoins_Request.$Pool_CoinSymbol.estimate / $Divisor) -Duration $StatSpan -ChangeDetection $true -HashRate $PoolCoins_Request.$Pool_CoinSymbol.hashrate_solo -BlockRate $PoolCoins_Request.$Pool_CoinSymbol."24h_blocks_solo" -Quiet
+            $Stat = Set-Stat -Name "$($Name)_$($Pool_CoinSymbol)_Profit" -Value ([Double]$PoolCoins_Request.$Pool_CoinSymbol.estimate / $Divisor) -Duration $StatSpan -ChangeDetection $false -Difficulty $PoolCoins_Request.$Pool_CoinSymbol.difficulty -Quiet
             $Pool_DataWindow = $null
         }
-        if (-not $Stat.HashRate_Live -and -not $AllowZero) {return}
     }
 
     $Pool_Params = if ($Params.$Pool_Currency) {",$($Params.$Pool_Currency)"}
@@ -116,10 +112,11 @@ $PoolCoins_Request | Get-Member -MemberType NoteProperty -ErrorAction Ignore | S
             Updated       = $Stat.Updated
             PoolFee       = $Pool_PoolFee
             DataWindow    = $Pool_DataWindow
-            Workers       = $PoolCoins_Request.$Pool_CoinSymbol.workers_solo
-            Hashrate      = $Stat.HashRate_Live
-            BLK           = $Stat.BlockRate_Average
-            TSL           = $Pool_TSL
+            Workers       = $null
+            Hashrate      = $null
+            BLK           = $null
+            TSL           = $null
+            Difficulty    = $Stat.Diff_Average
             SoloMining    = $true
 			ErrorRatio    = $Stat.ErrorRatio
             Failover      = @($Pool_FailoverRegionsTable.$Pool_Region | Foreach-Object {
@@ -137,6 +134,7 @@ $PoolCoins_Request | Get-Member -MemberType NoteProperty -ErrorAction Ignore | S
             PenaltyFactor = 1
             Disabled      = $false
             HasMinerExclusions = $false
+            Price_0       = 0.0
             Price_Bias    = 0.0
             Price_Unbias  = 0.0
             Wallet        = $Pool_User

@@ -5,13 +5,13 @@
 104	CcminerCool
 105	CcminerCryptonight
 106	CcminerLyra2v3
-107	CcminerRavencoin
+107	CcminerHeavyHash
 108	CcminerSib
 109	CcminerSkunk
 110	CcminerSpModBitcore
 111	CcminerSpModPhi
 112	CcminerSpModSkunk
-113	CcminerDelos
+113	CcminerObtc
 114	CcminerTpruvot
 115	CcminerTpruvotx64
 116	CcminerX16r
@@ -45,14 +45,39 @@
 144	CcminerZP
 145	CcminerXaja
 
-200	ClaymoreMoreEpoch
-205	ClaymoreDual
+200	CpuminerJayddee
+201	CpuminerRplantPW
+202	CpuminerRX2
+203	CpuminerWyfernTKC
+204	CpuminerOptBF
+205
+211	CpuminerWyvern
+212	CpuminerTake2
+213	CpuminerMulti
+220	ClaymoreCpu
+221	XmrigCpu
+230	CpuminerYespower
+231	CpuminerEasy
+232	CpuminerRplant
+233	NanominerRh
+234	Nanominer
+235	CpuminerVerus
+236	Nheqminer
+237	
+238	UlordRig
+239	CpuPower
+240	XmrigUpx
+241	Xlarig
+242	CpuminerRKZ
+243	CpuminerPower2b
+244	CpuminerVerium
+245	CpuminerArctichash
 
 300	Nsfminer
 301	Ethminer
 302	EnemyZealot
-303	XmrigNvidia
-304	XmrigAmd
+303	Xmrig
+304	
 305	Dstm
 306	Cast
 307	Bminer
@@ -94,15 +119,15 @@
 343	FireIceNvidia (linux)
 344	Phoenix42
 345	GrinGoldMiner
-346	TTminer3
-347	Gminer155
+346	Gminer275
+347	Gminer255
 348	NinjaRig
 349	SrbMinerMulti
 350	FireIceRX
 351	FireIceRXAmd (linux)
 352	FireIceRXCpu (linux)
 353	FireIceRXNvidia (linux)
-354	Gminer183
+354	Gminer258
 355	ProgPOWSeroNvidia
 356	6Miner
 357	ProgPOWEthercoreNvidia
@@ -113,6 +138,10 @@
 362	MiniZRTX
 363	CryptoDredge25
 364	VertHash
+365	Teamblack
+366	VertHashSP
+367	FiroPOWNvidia
+368	ClaymoreDual
 
 400	Sgminer
 401	SgminerBitcore
@@ -132,34 +161,6 @@
 415	ProgPOWEthercoreAMD
 416	KawPOWAmd
 417	NoncerProAMD
-
-500	CpuminerJayddee
-501	CpuminerRplantPW
-502	CpuminerRX2
-503	
-504	CpuminerOptBF
-510	
-511	
-512	
-513	CpuminerMulti
-520	ClaymoreCpu
-521	XmrigCpu
-530	CpuminerYespower
-531	CpuminerEasy
-532	CpuminerRplant
-533	NanominerRh
-534	Nanominer
-535	CpuminerVerus
-536	Nheqminer
-537	
-538	UlordRig
-539	CpuPower
-540	XmrigUpx
-541	Xlarig
-542	CpuminerRKZ
-543	CpuminerPower2b
-544	CpuminerVerium
-545	CpuminerArctichash
-
+418	FiroPOWAmd
 
 4068    CcminerSpModTribus

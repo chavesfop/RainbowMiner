@@ -14,20 +14,6 @@
                     ]
     },
     {
-        "symbol":  "ELLA",
-        "coin":  "Ellaism",
-        "algo":  "Ethash",
-        "rpc":  "ell-solo.baikalmine.com",
-        "host":  "ell-solo.baikalmine.com",
-        "port":  [
-                     1015
-                 ],
-        "fee":  1.0,
-        "regions":  [
-                        "eu"
-                    ]
-    },
-    {
         "symbol":  "ETC",
         "coin":  "Ethereum Classic",
         "algo":  "Ethash",
@@ -56,48 +42,6 @@
                     ]
     },
     {
-        "symbol":  "ETP",
-        "coin":  "Metaverse",
-        "algo":  "Ethash",
-        "rpc":  "etp-solo.baikalmine.com",
-        "host":  "etp-solo.baikalmine.com",
-        "port":  [
-                     5151
-                 ],
-        "fee":  1.0,
-        "regions":  [
-                        "eu"
-                    ]
-    },
-    {
-        "symbol":  "EXP",
-        "coin":  "Expanse",
-        "algo":  "Ethash",
-        "rpc":  "exp-solo.baikalmine.com",
-        "host":  "exp-solo.baikalmine.com",
-        "port":  [
-                     7175
-                 ],
-        "fee":  1.0,
-        "regions":  [
-                        "eu"
-                    ]
-    },
-    {
-        "symbol":  "JOYS",
-        "coin":  "Joys Digital",
-        "algo":  "Ethash",
-        "rpc":  "joys-solo.baikalmine.com",
-        "host":  "joys-solo.baikalmine.com",
-        "port":  [
-                     9195
-                 ],
-        "fee":  1.0,
-        "regions":  [
-                        "eu"
-                    ]
-    },
-    {
         "symbol":  "MOAC",
         "coin":  "Moac",
         "algo":  "Ethash",
@@ -107,20 +51,6 @@
                      4545
                  ],
         "fee":  1.0,
-        "regions":  [
-                        "eu"
-                    ]
-    },
-    {
-        "symbol":  "WLI",
-        "coin":  "Wanliuno",
-        "algo":  "Ethash",
-        "rpc":  "wanli.baikalmine.com",
-        "host":  "wanli.baikalmine.com",
-        "port":  [
-                     4343
-                 ],
-        "fee":  0.5,
         "regions":  [
                         "eu"
                     ]

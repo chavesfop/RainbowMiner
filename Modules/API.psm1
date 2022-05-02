@@ -25,7 +25,9 @@
     $API.IsServer    = $Session.Config.RunMode -eq "Server"
     $API.MachineName = $Session.MachineName
     $API.Debug       = $Session.LogLevel -eq "Debug"
+    $API.PauseMiners = [PSCustomObject]@{Pause = $false;PauseIA = $false;PauseIAOnly = $false}
 
+    Set-APIConfig
     Set-APICredentials
 
     # Setup the global HTTP listener
@@ -40,8 +42,9 @@
     $Global:APIHttpListener.Start()
 
     # Setup additional, global variables for server handling
-    $Global:APIClients = [System.Collections.ArrayList]::Synchronized((New-Object System.Collections.ArrayList))
-    $Global:APIListeners   = [System.Collections.ArrayList]@()
+    $Global:APIClients   = [System.Collections.ArrayList]::Synchronized((New-Object System.Collections.ArrayList))
+    $Global:APIListeners = [System.Collections.ArrayList]@()
+    $Global:APIAccessDB  = [hashtable]::Synchronized(@{})
 
     # Setup runspacepool to launch the API webserver in separate threads
     $APIVars = [Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
@@ -49,6 +52,10 @@
     $APIVars.Variables.Add([Management.Automation.Runspaces.SessionStateVariableEntry]::new('Session', $Session, $null))
     $APIVars.Variables.Add([Management.Automation.Runspaces.SessionStateVariableEntry]::new('AsyncLoader', $AsyncLoader, $null))
     $APIVars.Variables.Add([Management.Automation.Runspaces.SessionStateVariableEntry]::new('APIClients', $APIClients, $null))
+    $APIVars.Variables.Add([Management.Automation.Runspaces.SessionStateVariableEntry]::new('APIAccessDB', $APIAccessDB, $null))
+    if (Initialize-HttpClient) {
+        $APIVars.Variables.Add([Management.Automation.Runspaces.SessionStateVariableEntry]::new("GlobalHttpClient", $Global:GlobalHttpClient, $null))
+    }
 
     $MinThreads = 1
     $MaxThreads = if ($Session.Config.APIthreads) {$Session.Config.APIthreads} elseif ($API.IsServer) {$MinThreads = 2;[Math]::Min($Global:GlobalCPUInfo.Threads,8)} else {[Math]::Min($Global:GlobalCPUInfo.Cores,2)}
@@ -93,6 +100,13 @@ Function Stop-APIServer {
     $Global:APIHttpListener = $null
 
     Remove-Variable "API" -Scope Global -Force
+}
+
+function Set-APIConfig {
+    $API.LockConfig  = $Session.Config.APIlockConfig
+    $API.MaxLoginAttempts = $Session.Config.APImaxLoginAttemps
+    $API.BlockLoginAttemptsTime = ConvertFrom-Time $Session.Config.APIblockLoginAttemptsTime
+    $API.AllowIPs    = $Session.Config.APIallowIPs
 }
 
 function Set-APICredentials {

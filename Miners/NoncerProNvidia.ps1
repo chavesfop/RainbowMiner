@@ -47,7 +47,7 @@ if (-not (Confirm-Cuda -ActualVersion $Session.Config.CUDAVersion -RequiredVersi
 $Global:DeviceCache.DevicesByTypes.NVIDIA | Select-Object Vendor, Model -Unique | ForEach-Object {
     $First = $true
     $Miner_Model = $_.Model
-    $Miner_Device = $Global:DeviceCache.DevicesByTypes."$($_.Vendor)".Where({$_.Model -eq $Miner_Model})
+    $Miner_Device = $Global:DeviceCache.DevicesByTypes."$($_.Vendor)".Where({$_.Model -eq $Miner_Model -and $_.OpenCL.Architecture -in @("Pascal","Turing","Other")})
 
     $Commands.ForEach({
 
@@ -81,6 +81,8 @@ $Global:DeviceCache.DevicesByTypes.NVIDIA | Select-Object Vendor, Model -Unique 
                     PowerDraw      = 0
                     BaseName       = $Name
                     BaseAlgorithm  = $Algorithm_Norm_0
+                    Benchmarked    = $Global:StatsCache."$($Miner_Name)_$($Algorithm_Norm_0)_HashRate".Benchmarked
+                    LogFile        = $Global:StatsCache."$($Miner_Name)_$($Algorithm_Norm_0)_HashRate".LogFile
                     EnvVars        = @("UV_THREADPOOL_SIZE=32")
 				}
 			}

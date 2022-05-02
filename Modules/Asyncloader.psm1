@@ -20,7 +20,6 @@ Param(
     $AsyncLoader.CycleTime  = 10
     $AsyncLoader.Interval   = $Interval
     $AsyncLoader.Quickstart = $Quickstart
-    $AsyncLoader.Verbose    = $false
     $AsyncLoader.Debug      = $Session.LogLevel -eq "Debug"
     $AsyncLoader.Timestamp  = $null
 
@@ -32,6 +31,9 @@ Param(
     $newRunspace.Open()
     $newRunspace.SessionStateProxy.SetVariable("AsyncLoader", $AsyncLoader)
     $newRunspace.SessionStateProxy.SetVariable("Session", $Session)
+    if (Initialize-HttpClient) {
+        $newRunspace.SessionStateProxy.SetVariable("GlobalHttpClient", $Global:GlobalHttpClient)
+    }
     $newRunspace.SessionStateProxy.Path.SetLocation($(pwd)) > $null
 
     $AsyncloaderScript = [ScriptBlock]::Create((Get-Content ".\Scripts\Asyncloader.ps1" -Raw))

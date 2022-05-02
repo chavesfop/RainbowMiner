@@ -21,8 +21,8 @@ $Name = Get-Item $MyInvocation.MyCommand.Path | Select-Object -ExpandProperty Ba
 $Pools_Data = @(
     [PSCustomObject]@{regions = @("eu","us","asia"); host = "1-beam.flypool.org";      rpc = "api-beam.flypool.org";      symbol = "BEAM"; port = @(3333,3443); fee = 1; divisor = 1}
     [PSCustomObject]@{regions = @("eu","us","asia"); host = "1-zcash.flypool.org";     rpc = "api-zcash.flypool.org";     symbol = "ZEC";  port = @(3333,3443); fee = 1; divisor = 1}
-    [PSCustomObject]@{regions = @("eu","us","asia"); host = "1-ycash.flypool.org";     rpc = "api-ycash.flypool.org";     symbol = "YEC";  port = @(3333,3443); fee = 1; divisor = 1}
     [PSCustomObject]@{regions = @("stratum");        host = "-ravencoin.flypool.org";  rpc = "api-ravencoin.flypool.org"; symbol = "RVN";  port = @(3333,3443); fee = 1; divisor = 1}
+    [PSCustomObject]@{regions = @("stratum");        host = "-ergo.flypool.org";       rpc = "api-ergo.flypool.org";      symbol = "ERG";  port = @(3333,3443); fee = 0; divisor = 1} #fee = 0% until 22nd Sept. 2021
 )
 
 $Pool_Currencies = $Pools_Data.symbol | Select-Object -Unique | Where-Object {$Wallets.$_ -or $InfoOnly}
@@ -33,7 +33,7 @@ $Pools_Data | Where-Object {$Wallets."$($_.symbol)" -or $InfoOnly} | ForEach-Obj
     $Pool_Ports = $_.port
     $Pool_Algorithm_Norm = Get-Algorithm $Pool_Coin.Algo
     $Pool_Currency = $_.symbol
-    $Pool_EthProxy = if ($Pool_Algorithm_Norm -match $Global:RegexAlgoHasEthproxy) {"qtminer"} elseif ($Pool_Algorithm_Norm -eq "KawPOW") {"stratum"} else {$null}
+    $Pool_EthProxy = if ($Pool_Algorithm_Norm -match $Global:RegexAlgoHasEthproxy) {"qtminer"} elseif ($Pool_Algorithm_Norm -match $Global:RegexAlgoIsProgPow) {"stratum"} else {$null}
 
     $Pool_Request = [PSCustomObject]@{}
 
@@ -86,6 +86,7 @@ $Pools_Data | Where-Object {$Wallets."$($_.symbol)" -or $InfoOnly} | ForEach-Obj
                     PenaltyFactor = 1
 					Disabled      = $false
 					HasMinerExclusions = $false
+                    Price_0       = 0.0
 					Price_Bias    = 0.0
 					Price_Unbias  = 0.0
                     Wallet        = $Wallets.$Pool_Currency

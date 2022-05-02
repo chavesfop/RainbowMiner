@@ -52,27 +52,7 @@ if (($Wallets | Measure-Object).Count -and (-not $Config.WalletBalances.Count -o
 # Other wallets
 #
 
-$Wallets_Data = @(
-    [PSCustomObject]@{symbol = "AE";   match = "^ak_";  rpc = "http://www.aeknow.org/api/account/{w}";                                address = "id";                               balance = "balance";                         received = "";                                 divisor = 1e18}
-    [PSCustomObject]@{symbol = "BCH";  match = "^1";    rpc = "https://api.blockchair.com/bitcoin-cash/dashboards/address/{w}";       address = "data.{w}.address.legacy";          balance = "data.{w}.address.balance";        received = "data.{w}.address.received";        divisor = 1e8; verify = "context.code"; verify_value = "200"}
-    [PSCustomObject]@{symbol = "BCH";  match = "^q";    rpc = "https://api.blockchair.com/bitcoin-cash/dashboards/address/{w}";       address = "data.{w}.address.cashaddr";        balance = "data.{w}.address.balance";        received = "data.{w}.address.received";        divisor = 1e8; verify = "context.code"; verify_value = "200"}
-    [PSCustomObject]@{symbol = "CRO";  match = "^cro";  rpc = "https://crypto.org/explorer/api/v1/accounts/{w}";                      address = "result.address";                   balance = "data.result.totalBalance[denom=basecro].amount"; received = "";                  divisor = 1e8}
-    [PSCustomObject]@{symbol = "DASH"; match = "^X";    rpc = "https://api.blockcypher.com/v1/dash/main/addrs/{w}";                   address = "address";                          balance = "balance";                         received = "total_received";                   divisor = 1e8}
-    [PSCustomObject]@{symbol = "DOGE"; match = "^D";    rpc = "https://api.blockcypher.com/v1/doge/main/addrs/{w}";                   address = "address";                          balance = "balance";                         received = "total_received";                   divisor = 1e8}
-    [PSCustomObject]@{symbol = "DOT";  match = "^1";    rpc = "https://explorer-32.polkascan.io/api/v1/polkadot/account/{w}";         address = "data.attributes.address";          balance = "data.attributes.balance_total";   received = "";                                 divisor = 1e10; verify = "data.type"; verify_value = "account"}
-    [PSCustomObject]@{symbol = "ETH";  match = "^0x";   rpc = "https://api.blockcypher.com/v1/eth/main/addrs/{w}";                    address = "address";                          balance = "balance";                         received = "total_received";                   divisor = 1e18}
-    [PSCustomObject]@{symbol = "FIRO"; match = "^[aZ]"; rpc = "https://explorer.zcoin.io/insight-api-zcoin/addr/{w}/?noTxList=1";     address = "addrStr";                          balance = "balance";                         received = "totalReceived";                    divisor = 1}
-    [PSCustomObject]@{symbol = "LTC";  match = "^[M3]"; rpc = "https://sochain.com/api/v2/get_address_balance/ltc/{w}";               address = "data.address";                     balance = "data.confirmed_balance";          received = "";                                 divisor = 1; verify = "status"; verify_value = "success"}
-    [PSCustomObject]@{symbol = "RVN";  match = "^R";    rpc = "https://ravencoin.network/api/addr/{w}/?noTxList=1";                   address = "addrStr";                          balance = "balance";                         received = "totalReceived";                    divisor = 1}
-    [PSCustomObject]@{symbol = "SAFE"; match = "^R";    rpc = "https://explorer.safecoin.org/api/addr/{w}/?noTxList=1";               address = "addrStr";                          balance = "balance";                         received = "totalReceived";                    divisor = 1}
-    [PSCustomObject]@{symbol = "XLM";  match = "^G";    rpc = "https://horizon.stellar.org/accounts/{w}";                             address = "id";                               balance = "balances";                        received = "";                                 divisor = 1}
-	[PSCustomObject]@{symbol = "XRP";  match = "^r";    rpc = "https://api.xrpscan.com/api/v1/account/{w}";                           address = "account";                          balance = "xrpBalance";                      received = "";                                 divisor = 1}
-	[PSCustomObject]@{symbol = "XTZ";  match = "^tz";   rpc = "https://api.blockchair.com/tezos/raw/account/{w}";                     address = "data.{w}.account.address";         balance = "data.{w}.account.total_balance";  received = "data.{w}.account.total_received";  divisor = 1}
-	[PSCustomObject]@{symbol = "YEC";  match = "^s1";   rpc = "https://yec.safe.trade/api/YEC/mainnet/address/{w}/balance";           address = "";                                 balance = "balance";                         received = "";                                 divisor = 1e8; verify = "exists"; verify_value = "balance"}
-    [PSCustomObject]@{symbol = "VRSC"; match = "^R";    rpc = "https://explorer.verus.io/ext/getaddress/{w}";                         address = "address";                          balance = "balance";                         received = "received";                         divisor = 1}
-    [PSCustomObject]@{symbol = "YTN";  match = "^Y";    rpc = "http://ytn.ccore.online/ext/getaddress/{w}";                           address = "address";                          balance = "balance";                         received = "received";                         divisor = 1}
-    [PSCustomObject]@{symbol = "ZEC";  match = "^t";    rpc = "https://api.zcha.in/v2/mainnet/accounts/{w}";                          address = "address";                          balance = "balance";                         received = "totalRecv";                        divisor = 1}
-)
+$Wallets_Data = Get-WalletsData
 
 foreach ($Wallet_Data in $Wallets_Data) {
     $Wallet_Symbol  = $Wallet_Data.symbol
@@ -88,7 +68,7 @@ foreach ($Wallet_Data in $Wallets_Data) {
             $Success = $true
             try {
                 $Request = Invoke-RestMethodAsync "$($Wallet_Data.rpc -replace "{w}",$Wallet_Address)" -cycletime ($Config.BalanceUpdateMinutes*60) -fixbigint
-                if (($Wallet_Data.verify -eq $null -and "$(Invoke-Expression "`$Request.$($Wallet_Data.address -replace "{w}",$Wallet_Address)")" -ne $Wallet_Address) -or 
+                if (($Wallet_Data.verify -eq $null -and $Wallet_Data.address -ne "" -and "$(Invoke-Expression "`$Request.$($Wallet_Data.address -replace "{w}",$Wallet_Address)")" -ne $Wallet_Address) -or 
                     ($Wallet_Data.verify -eq "exists" -and "$(Invoke-Expression "`$Request.$($Wallet_Data.verify_value -replace "{w}",$Wallet_Address)")" -eq "") -or
                     ($Wallet_Data.verify -ne "exists" -and $Wallet_Data.verify -ne $null -and "$(Invoke-Expression "`$Request.$($Wallet_Data.verify -replace "{w}",$Wallet_Address)")" -ne $Wallet_Data.verify_value)
                     ) {$Success = $false}
@@ -110,21 +90,25 @@ foreach ($Wallet_Data in $Wallets_Data) {
                     ($Request.balances | Where-Object {$_.asset_type -eq "native"} | Select-Object -ExpandProperty balance | Measure-Object -Sum).Sum
                 }
                 default {
-                    $val = $null
-                    $Wallet_Data.balance -replace "{w}",$Wallet_Address -split "\." | Foreach-Object {
-                        if ($_ -match '^(.+)\[([^\]]+)\]$') {
-                            $val = if ($val -ne $null) {$val."$($Matches[1])"} else {$Request."$($Matches[1])"}
-                            $arrp = $Matches[2].Split("=",2)
-                            if ($arrp[0] -match '^\d+$') {
-                                $val = $val[[int]$arrp[0]]
+                    if ($Wallet_Data.balance -eq "#") {
+                        $Request
+                    } else {
+                        $val = $null
+                        $Wallet_Data.balance -replace "{w}",$Wallet_Address -split "\." | Foreach-Object {
+                            if ($_ -match '^(.+)\[([^\]]+)\]$') {
+                                $val = if ($val -ne $null) {$val."$($Matches[1])"} else {$Request."$($Matches[1])"}
+                                $arrp = $Matches[2].Split("=",2)
+                                if ($arrp[0] -match '^\d+$') {
+                                    $val = $val[[int]$arrp[0]]
+                                } else {
+                                    $val = $val | ?{$_."$($arrp[0])" -eq $arrp[1]}
+                                }
                             } else {
-                                $val = $val | ?{$_."$($arrp[0])" -eq $arrp[1]}
+                                $val = if ($val -ne $null) {$val.$_} else {$Request.$_}
                             }
-                        } else {
-                            $val = if ($val -ne $null) {$val.$_} else {$Request.$_}
                         }
+                        $val
                     }
-                    $val
                 }
             })
 
@@ -220,6 +204,58 @@ if ($Config.Pools.Nicehash.EnableShowWallets -and $Config.Pools.Nicehash.API_Key
                 Total       = [decimal]$_.totalBalance
                 Payouts     = @()
                 LastUpdated = (Get-Date).ToUniversalTime()
+        }
+    }
+}
+
+#
+# Covalent
+#
+
+if ($Config.CovalentAPIKey) {
+
+    # Polygon chain
+
+    $Polygon_Base_Wallet_Symbol  = "WETH"
+
+    @($Config.Coins.PSObject.Properties | Where-Object {"$($_.Name -replace "_\d+$")" -eq $Polygon_Base_Wallet_Symbol -and $_.Value.Wallet -match "^0x"} | Foreach-Object {$_.Value.Wallet}) + @($Config.Pools.PSObject.Properties.Value | Where-Object {$_.Wallets.$Polygon_Base_Wallet_Symbol -match "^0x"} | Foreach-Object {$_.Wallets.$Polygon_Base_Wallet_Symbol}) | Select-Object -Unique | Sort-Object | Foreach-Object {
+
+        $Wallet_Address = $_
+        $Wallet_Info = $Wallet_Address -replace "^0x"
+
+        $Request = @()
+        try {
+            $Request = Invoke-RestMethodAsync "https://api.covalenthq.com/v1/137/address/$($Wallet_Address)/balances_v2/?key=$($Config.CovalentAPIKey)" -cycletime ($Config.BalanceUpdateMinutes*60) -fixbigint
+        }
+        catch {
+            if ($Error.Count){$Error.RemoveAt(0)}
+            Write-Log -Level Verbose "Covalent API has failed ($Name)"
+        }
+
+        if ($Request.error) {
+            Write-Log -Level Verbose "Covalent API returned error ($Name): $($error_code) $($error_message)"
+            return
+        }
+
+        $Request.data.items | Foreach-Object {
+
+            $Wallet_Symbol = $_.contract_ticker_symbol
+            if (($Session.Config.Coins."$($Wallet_Symbol)") -and (-not $Config.ExcludeCoinsymbolBalances.Count -or $Config.ExcludeCoinsymbolBalances -notcontains $Wallet_Symbol)) {
+
+                $Wallet_Balance = $_.balance / [Math]::Pow(10,$_.contract_decimals)
+
+                [PSCustomObject]@{
+                        Caption     = "$Name $($Wallet_Symbol) $($Wallet_Address)"
+                        BaseName    = $Name
+                        Info        = " $($Wallet_Info.Substring(0,3))..$($Wallet_Info.Substring($Wallet_Info.Length-3,3)) Polygon"
+                        Currency    = $_.contract_ticker_symbol
+                        Balance     = $Wallet_Balance
+                        Pending     = 0
+                        Total       = $Wallet_Balance
+                        Payouts     = @()
+                        LastUpdated = (Get-Date).ToUniversalTime()
+                }
+            }
         }
     }
 }

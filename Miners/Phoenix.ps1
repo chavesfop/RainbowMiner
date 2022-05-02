@@ -9,16 +9,16 @@ $ManualURI = "https://bitcointalk.org/index.php?topic=2647654.0"
 $Port = "308{0:d2}"
 $DevFee = 0.65
 $Cuda = "8.0"
-$Version = "5.6d"
+$Version = "6.1b"
 
 if (-not $IsWindows -and -not $IsLinux) {return}
 
 if ($IsLinux) {
     $Path = ".\Bin\GPU-Phoenix\PhoenixMiner"
-    $URI = "https://github.com/RainbowMiner/miner-binaries/releases/download/v5.6d-phoenix/PhoenixMiner_5.6d_Linux.tar.gz"
+    $URI = "https://github.com/RainbowMiner/miner-binaries/releases/download/v6.1b-phoenix/PhoenixMiner_6.1b_Linux.tar.gz"
 } else {
     $Path = ".\Bin\GPU-Phoenix\PhoenixMiner.exe"
-    $URI = "https://github.com/RainbowMiner/miner-binaries/releases/download/v5.6d-phoenix/PhoenixMiner_5.6d_Windows.7z"
+    $URI = "https://github.com/RainbowMiner/miner-binaries/releases/download/v6.1b-phoenix/PhoenixMiner_6.1b_Windows.7z"
 }
 
 if (-not $Global:DeviceCache.DevicesByTypes.NVIDIA -and -not $Global:DeviceCache.DevicesByTypes.AMD -and -not $InfoOnly) {return} # No GPU present in system
@@ -27,15 +27,13 @@ $Commands = [PSCustomObject[]]@(
     [PSCustomObject]@{MainAlgorithm = "etchash"    ; MinMemGB = 3; Vendor = @("AMD","NVIDIA"); Params = @()} #Etchash
     [PSCustomObject]@{MainAlgorithm = "ethash"     ; MinMemGB = 3; Vendor = @("AMD","NVIDIA"); Params = @()} #Ethash
     [PSCustomObject]@{MainAlgorithm = "ethashlowmemory" ; MinMemGB = 2; Vendor = @("AMD","NVIDIA"); Params = @()} #Ethash for low memory coins
-    [PSCustomObject]@{MainAlgorithm = "progpow"    ; MinMemGB = 3; Vendor = @("AMD","NVIDIA"); Params = @(); ExcludePoolName = "^SuprNova"} #ProgPow
+    [PSCustomObject]@{MainAlgorithm = "progpow"    ; MinMemGB = 3; Vendor = @("AMD","NVIDIA"); Params = @(); ExcludePoolName = "SuprNova"} #ProgPow
     [PSCustomObject]@{MainAlgorithm = "ubqhash"    ; MinMemGB = 2; Vendor = @("AMD","NVIDIA"); Params = @()} #UbqHash
 )
 $CommonParams = "-allpools 0 -cdm 1 -leaveoc -log 0 -rmode 0 -wdog 1 -gbase 0"
 
 $CoinXlat = [PSCustomObject]@{
-    "AKA" = "akroma"
     "ATH" = "ath"
-    "AURA" = "aura"
     "B2G" = "b2g"
     "BCI" = "bci"
     "CLO" = "clo"
@@ -44,14 +42,10 @@ $CoinXlat = [PSCustomObject]@{
     "ELLA" = "ella"
     "ESN" = "esn"
     "ETC" = "etc"
-    "ETCC" = "etcc"
     "ETH" = "eth"
     "ETHO" = "etho"
     "ETP" = "etp"
-    "ETZ" = "etz"
     "EXP" = "exp"
-    "GEN" = "gen"
-    "HBC" = "hbc"
     "MIX" = "mix"
     "MOAC" = "moac"
     "MUSIC" = "music"
@@ -104,7 +98,7 @@ foreach ($Miner_Vendor in @("AMD","NVIDIA")) {
             $Miner_Device = $Device | Where-Object {Test-VRAM $_ $MinMemGB}
 
 			foreach($Algorithm_Norm in @($Algorithm_Norm_0,"$($Algorithm_Norm_0)-$($Miner_Model)","$($Algorithm_Norm_0)-GPU")) {
-				if ($Pools.$Algorithm_Norm.Host -and $Miner_Device -and (-not $_.ExcludePoolName -or $Pools.$Algorithm_Norm.Name -notmatch $_.ExcludePoolName)) {
+				if ($Pools.$Algorithm_Norm.Host -and $Miner_Device -and (-not $_.ExcludePoolName -or $Pools.$Algorithm_Norm.Host -notmatch $_.ExcludePoolName)) {
                     if ($First) {
 			            $Miner_Port = $Port -f ($Miner_Device | Select-Object -First 1 -ExpandProperty Index)
 			            $Miner_Name = (@($Name) + @($Miner_Device.Name | Sort-Object) | Select-Object) -join '-'
@@ -119,12 +113,12 @@ foreach ($Miner_Vendor in @("AMD","NVIDIA")) {
                         "qtminer"          {"-proto 3"}
                         "ethstratum"       {"-proto 4"}
                         "ethstratum1"      {"-proto 4"}
-						"ethstratumnh"     {"-proto 4 -stales 0"}
+						"ethstratumnh"     {"-proto 4"}
                         "ethstratum2"      {"-proto 5"}
 						default            {"-proto 1"}
 					}
 
-                    if ($Pools.$Algorithm_Norm.Name -eq "F2pool" -and $Pools.$Algorithm_Norm.User -match "^0x[0-9a-f]{40}") {$Pool_Port = 8008}
+                    if ($Pools.$Algorithm_Norm.Host -match "F2pool" -and $Pools.$Algorithm_Norm.User -match "^0x[0-9a-f]{40}") {$Pool_Port = 8008}
 
                     $CoinSymbol = $Pools.$Algorithm_Norm.CoinSymbol
                     $Coin = if ($Algorithm_Norm -match "ProgPow") {"bci"}
@@ -138,7 +132,7 @@ foreach ($Miner_Vendor in @("AMD","NVIDIA")) {
 						DeviceName     = $Miner_Device.Name
 						DeviceModel    = $Miner_Model
 						Path           = $Path
-						Arguments      = "-cdmport `$mport -coin $($Coin) -di $($DeviceIDsAll) -pool $(if($Pools.$Algorithm_Norm.SSL){"ssl://"})$($Pools.$Algorithm_Norm.Host):$($Pool_Port) $(if ($Pools.$Algorithm_Norm.Wallet -and $Pools.$Algorithm_Norm.Name -notmatch "nicehash") {"-wal $($Pools.$Algorithm_Norm.Wallet) -worker $($Pools.$Algorithm_Norm.Worker)"} else {"-wal $($Pools.$Algorithm_Norm.User)"})$(if ($Pools.$Algorithm_Norm.Pass) {" -pass $($Pools.$Algorithm_Norm.Pass)"}) $($Miner_Protocol_Params) $($Miner_Deviceparams) $($CommonParams) $($_.Params)"
+						Arguments      = "-cdmport `$mport -coin $($Coin) -di $($DeviceIDsAll) -pool $(if($Pools.$Algorithm_Norm.SSL){"ssl://"})$($Pools.$Algorithm_Norm.Host):$($Pool_Port) $(if ($Pools.$Algorithm_Norm.Wallet -and $Pools.$Algorithm_Norm.Host -notmatch "nicehash") {"-wal $($Pools.$Algorithm_Norm.Wallet) -worker $($Pools.$Algorithm_Norm.Worker)"} else {"-wal $($Pools.$Algorithm_Norm.User)"})$(if ($Pools.$Algorithm_Norm.Pass) {" -pass $($Pools.$Algorithm_Norm.Pass)"}) -stales $(if ($Pools.$Algorithm_Norm.Host -match "FlexPool|Nicehash") {0} else {1}) $($Miner_Protocol_Params) $($Miner_Deviceparams) $($CommonParams) $($_.Params)"
 						HashRates      = [PSCustomObject]@{$Algorithm_Norm = $($Global:StatsCache."$($Miner_Name)_$($Algorithm_Norm_0)_HashRate".Week)}
 						API            = "Claymore"
 						Port           = $Miner_Port
@@ -153,6 +147,9 @@ foreach ($Miner_Vendor in @("AMD","NVIDIA")) {
                         PowerDraw      = 0
                         BaseName       = $Name
                         BaseAlgorithm  = $Algorithm_Norm_0
+                        Benchmarked    = $Global:StatsCache."$($Miner_Name)_$($Algorithm_Norm_0)_HashRate".Benchmarked
+                        LogFile        = $Global:StatsCache."$($Miner_Name)_$($Algorithm_Norm_0)_HashRate".LogFile
+                        ExcludePoolName = $_.ExcludePoolName
 					}
 				}
 			}

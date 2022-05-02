@@ -19,7 +19,7 @@ if ($IsLinux) {
     $Path = ".\Bin\Ethash-Ethminer\ethminer"
     $UriCuda = @(
         [PSCustomObject]@{
-            Uri = "https://github.com/RainbowMiner/miner-binaries/releases/download/v0.19.0-ethminer/ethminer-0.19.0-18-cuda11.2-linux-amd64.7z"
+            Uri = "https://github.com/RainbowMiner/miner-binaries/releases/download/v0.19.0-ethminer/ethminer-0.19.0-18-cuda11.6-linux-amd64.7z"
             Cuda = "11.2"
         },
         [PSCustomObject]@{
@@ -31,7 +31,7 @@ if ($IsLinux) {
     $Path = ".\Bin\Ethash-Ethminer\ethminer.exe"
     $UriCuda = @(
         [PSCustomObject]@{
-            Uri = "https://github.com/RainbowMiner/miner-binaries/releases/download/v0.19.0-ethminer/ethminer-0.19.0-18-cuda11.2-windows-vs2019-amd64.zip"
+            Uri = "https://github.com/RainbowMiner/miner-binaries/releases/download/v0.19.0-ethminer/ethminer-0.19.0-18-cuda11.6-windows-vs2019-amd64.zip"
             Cuda = "11.2"
         },
         [PSCustomObject]@{
@@ -125,14 +125,24 @@ foreach ($Miner_Vendor in @("AMD","NVIDIA")) {
 						default            {"stratum$(if ($Pools.$Algorithm_Norm.SSL) {"s"})";$Miner_Protocol_Auto = $true}
 					}
 
-                    if ($Pools.$Algorithm_Norm.Name -eq "F2pool" -and $Pools.$Algorithm_Norm.User -match "^0x[0-9a-f]{40}") {$Pool_Port = 8008}
+                    if ($Pools.$Algorithm_Norm.Host -match "F2pool" -and $Pools.$Algorithm_Norm.User -match "^0x[0-9a-f]{40}") {$Pool_Port = 8008}
+
+                    $EnvVars = @()
+                    if ($Pools.$Algorithm_Norm.SSL) {
+                        $EnvVars += "SSL_NOVERIFY=1"
+                    }
+
+                    if ($Miner_Vendor -eq "AMD") {
+                        $EnvVars += "GPU_FORCE_64BIT_PTR=0"
+                    }
+
 
 					[PSCustomObject]@{
 						Name           = $Miner_Name
 						DeviceName     = $Miner_Device.Name
 						DeviceModel    = $Miner_Model
 						Path           = $Path
-						Arguments      = "--api-port `$mport $($Miner_Deviceparams) $($DeviceIDsAll) -P $($Miner_Protocol)://$(Get-UrlEncode $Pools.$Algorithm_Norm.User -ConvertDot:$($Pools.$Algorithm_Norm.EthMode -ne "ethproxy"))$(if ($Pools.$Algorithm_Norm.Pass) {":$(Get-UrlEncode $Pools.$Algorithm_Norm.Pass -ConvertDot)"})@$($Pools.$Algorithm_Norm.Host):$($Pool_Port) --HWMON 2$(if (-not $Miner_Protocol_Auto) {" --farm-recheck 3000 --farm-retries 20 --work-timeout 900 --response-timeout 180"}) $($_.Params)"
+						Arguments      = "--api-port `$mport $($Miner_Deviceparams) $($DeviceIDsAll) -P $($Miner_Protocol)://$(Get-UrlEncode $Pools.$Algorithm_Norm.User -ConvertDot:$($Pools.$Algorithm_Norm.EthMode -ne "ethproxy"))$(if ($Pools.$Algorithm_Norm.Pass) {":$(Get-UrlEncode $Pools.$Algorithm_Norm.Pass -ConvertDot)"})@$($Pools.$Algorithm_Norm.Host):$($Pool_Port) --HWMON 2$(if (-not $Miner_Protocol_Auto) {" --farm-recheck 3000 --farm-retries 20 --work-timeout 900 --response-timeout 180"}) --exit $($_.Params)"
 						HashRates      = [PSCustomObject]@{$Algorithm_Norm = $Global:StatsCache."$($Miner_Name)_$($Algorithm_Norm_0)_HashRate".Week}
 						API            = "Ethminer"
 						Port           = $Miner_Port
@@ -142,11 +152,13 @@ foreach ($Miner_Vendor in @("AMD","NVIDIA")) {
 					    ExtendInterval = $_.ExtendInterval
                         Penalty        = 0
                         DevFee         = 0
-                        EnvVars        = if ($Miner_Vendor -eq "AMD") {@("GPU_FORCE_64BIT_PTR=0")} else {$null}
+                        EnvVars        = if ($EnvVars.Count) {$EnvVars} else {$null}
                         Version        = $Version
                         PowerDraw      = 0
                         BaseName       = $Name
                         BaseAlgorithm  = $Algorithm_Norm_0
+                        Benchmarked    = $Global:StatsCache."$($Miner_Name)_$($Algorithm_Norm_0)_HashRate".Benchmarked
+                        LogFile        = $Global:StatsCache."$($Miner_Name)_$($Algorithm_Norm_0)_HashRate".LogFile
                         ListDevices    = "--list-devices"
 					}
 				}

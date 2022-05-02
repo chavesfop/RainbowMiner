@@ -11,35 +11,30 @@ $ManualURI = "https://github.com/NebuTech/NBMiner/releases"
 $Port = "340{0:d2}"
 $DevFee = 2.0
 $Cuda = "9.1"
-$Version = "37.5"
+$Version = "40.1"
 
 if ($IsLinux) {
     $Path = ".\Bin\GPU-NBMiner\nbminer"
-    $URI = "https://github.com/RainbowMiner/miner-binaries/releases/download/v37.5-nbminer/NBMiner_37.5_Linux.tgz"
+    $URI = "https://github.com/RainbowMiner/miner-binaries/releases/download/v40.1-nbminer/NBMiner_40.1_Linux.tgz"
 } else {
     $Path = ".\Bin\GPU-NBMiner\nbminer.exe"
-    $URI = "https://github.com/RainbowMiner/miner-binaries/releases/download/v37.5-nbminer/NBMiner_37.5_Win.zip"
+    $URI = "https://github.com/RainbowMiner/miner-binaries/releases/download/v40.1-nbminer/NBMiner_40.1_Win.zip"
 }
 
 if (-not $Global:DeviceCache.DevicesByTypes.AMD -and -not $Global:DeviceCache.DevicesByTypes.NVIDIA -and -not $InfoOnly) {return} # No GPU present in system
 
-$CuckooIntensity = if ($Global:GlobalCPUInfo.Cores -eq 1 -or $Global:GlobalCPUInfo.Threads -lt 4 -or $Global:GlobalCPUInfo.Name -match "Celeron") {4} else {2}
-
 $Commands = [PSCustomObject[]]@(
     #Cuckoo
-    [PSCustomObject]@{MainAlgorithm = "Aeternity";                 SecondaryAlgorithm = ""; Params = "-a cuckoo_ae --cuckoo-intensity $CuckooIntensity";     NH = $true;  MinMemGb = 5; DevFee = 2.0;  Vendor = @("NVIDIA"); ExtendInterval = 2; Penalty = 0; NoCPUMining = $true} #Cuckoo29/Aeternity
-    [PSCustomObject]@{MainAlgorithm = "Cuckatoo31";                SecondaryAlgorithm = ""; Params = "-a cuckatoo --cuckoo-intensity $CuckooIntensity";      NH = $true;  MinMemGb = 8; DevFee = 2.0;  Vendor = @("NVIDIA"); ExtendInterval = 2; Penalty = 0; NoCPUMining = $true} #Cuckatoo31
-    [PSCustomObject]@{MainAlgorithm = "Cuckatoo32";                SecondaryAlgorithm = ""; Params = "-a cuckatoo32 --cuckoo-intensity $CuckooIntensity";    NH = $true;  MinMemGb = 6; DevFee = 2.0;  Vendor = @("NVIDIA"); ExtendInterval = 2; Penalty = 0; NoCPUMining = $true} #Cuckatoo31
+    [PSCustomObject]@{MainAlgorithm = "Aeternity";                 SecondaryAlgorithm = ""; Params = "-a cuckoo_ae";     NH = $true;  MinMemGb = 5; DevFee = 2.0;  Vendor = @("NVIDIA"); ExtendInterval = 2; Penalty = 0; NoCPUMining = $true} #Cuckoo29/Aeternity
 
     #Others
-    [PSCustomObject]@{MainAlgorithm = "Autolykos2";                SecondaryAlgorithm = ""; Params = "-a ergo";          NH = $true; MinMemGb = 3;   DevFee = 2.0; Vendor = @("AMD","NVIDIA"); ExtendInterval = 2; Penalty = 0; NoCPUMining = $false} #Autolycos2/ERGO
+    [PSCustomObject]@{MainAlgorithm = "Autolykos2";                SecondaryAlgorithm = ""; Params = "-a ergo";          NH = $true; MinMemGb = 2;   DevFee = 2.0; Vendor = @("AMD","NVIDIA"); ExtendInterval = 2; Penalty = 0; NoCPUMining = $false} #Autolycos2/ERGO
     [PSCustomObject]@{MainAlgorithm = "BeamHash3";                 SecondaryAlgorithm = ""; Params = "-a beamv3";        NH = $true; MinMemGb = 3;   DevFee = 2.0; Vendor = @("NVIDIA");       ExtendInterval = 2; Penalty = 0; NoCPUMining = $false} #BEAM
-    #[PSCustomObject]@{MainAlgorithm = "Etchash";      DAG = $true; SecondaryAlgorithm = ""; Params = "-a etchash";       NH = $true; MinMemGb = 3;   DevFee = 1.0; Vendor = @("NVIDIA");       ExtendInterval = 2; Penalty = 0; NoCPUMining = $false} #Etchash
-    #[PSCustomObject]@{MainAlgorithm = "Ethash";       DAG = $true; SecondaryAlgorithm = ""; Params = "-a ethash";        NH = $true; MinMemGb = 3;   DevFee = 1.0; Vendor = @("NVIDIA");       ExtendInterval = 2; Penalty = 0; NoCPUMining = $false} #Ethash
-    #[PSCustomObject]@{MainAlgorithm = "EthashLowMemory"; DAG = $true; SecondaryAlgorithm = ""; Params = "-a ethash";     NH = $true; MinMemGb = 2;   DevFee = 1.0; Vendor = @("NVIDIA");       ExtendInterval = 2; Penalty = 0; NoCPUMining = $false} #Ethash for low memory coins
+    [PSCustomObject]@{MainAlgorithm = "Etchash";      DAG = $true; SecondaryAlgorithm = ""; Params = "-a etchash";       NH = $true; MinMemGb = 3;   DevFee = 1.0; Vendor = @("NVIDIA");       ExtendInterval = 2; Penalty = 0; NoCPUMining = $false} #Etchash
+    [PSCustomObject]@{MainAlgorithm = "Ethash";       DAG = $true; SecondaryAlgorithm = ""; Params = "-a ethash";        NH = $true; MinMemGb = 3;   DevFee = 1.0; Vendor = @("NVIDIA");       ExtendInterval = 2; Penalty = 0; NoCPUMining = $false} #Ethash
+    [PSCustomObject]@{MainAlgorithm = "EthashLowMemory"; DAG = $true; SecondaryAlgorithm = ""; Params = "-a ethash";     NH = $true; MinMemGb = 2;   DevFee = 1.0; Vendor = @("NVIDIA");       ExtendInterval = 2; Penalty = 0; NoCPUMining = $false} #Ethash for low memory coins
     [PSCustomObject]@{MainAlgorithm = "KawPOW";       DAG = $true; SecondaryAlgorithm = ""; Params = "-a kawpow";        NH = $true; MinMemGb = 2.4; DevFee = 2.0; Vendor = @("AMD","NVIDIA"); ExtendInterval = 2; Penalty = 0; NoCPUMining = $false} #KAWPoW
     [PSCustomObject]@{MainAlgorithm = "Octopus";      DAG = $true; SecondaryAlgorithm = ""; Params = "-a octopus";       NH = $true; MinMemGb = 5;   DevFee = 3.0; Vendor = @("NVIDIA"); ExtendInterval = 2; Penalty = 0; NoCPUMining = $false} #Octopus/Conflux
-    [PSCustomObject]@{MainAlgorithm = "ProgPowSero";  DAG = $true; SecondaryAlgorithm = ""; Params = "-a progpow_sero";  NH = $true; MinMemGb = 3;   DevFee = 2.0; Vendor = @("AMD","NVIDIA"); ExtendInterval = 2; Penalty = 0; NoCPUMining = $false} #ProgPowSero
 )
 
 $Name = Get-Item $MyInvocation.MyCommand.Path | Select-Object -ExpandProperty BaseName
@@ -102,15 +97,10 @@ foreach ($Miner_Vendor in @("AMD","NVIDIA")) {
                     }
 					$Pool_Port = if ($Pools.$MainAlgorithm_Norm.Ports -ne $null -and $Pools.$MainAlgorithm_Norm.Ports.GPU) {$Pools.$MainAlgorithm_Norm.Ports.GPU} else {$Pools.$MainAlgorithm_Norm.Port}
 
-                    $EthCoin = ""
-
                     $Pool_Protocol = Switch ($Pools.$MainAlgorithm_Norm.EthMode) {
                             "ethproxy" {$Pools.$MainAlgorithm_Norm.Protocol -replace "stratum","ethproxy"}
                             "ethstratumnh" {$Pools.$MainAlgorithm_Norm.Protocol -replace "stratum","nicehash"}
                             default {$Pools.$MainAlgorithm_Norm.Protocol}
-                    }
-                    if ($MainAlgorithm_Norm -eq "Etchash" -or $Pools.$MainAlgorithm_Norm.CoinSymbol -eq "ETC") {
-                        $EthCoin = " --coin etc"
                     }
 
 					if ($SecondAlgorithm -eq '') {
@@ -133,7 +123,7 @@ foreach ($Miner_Vendor in @("AMD","NVIDIA")) {
 							DeviceName     = $Miner_Device.Name
 							DeviceModel    = $Miner_Model
 							Path           = $Path
-							Arguments      = "--api 127.0.0.1:`$mport -d $($DeviceIDsAll) -o $($Pool_Protocol)://$($Pools.$MainAlgorithm_Norm.Host):$($Pool_Port) -u $($Pools.$MainAlgorithm_Norm.User)$(if ($Pools.$MainAlgorithm_Norm.Pass) {" -p $($Pools.$MainAlgorithm_Norm.Pass)"})$EthCoin$(if ($FailoverMain) {" $FailoverMain"}) --no-watchdog --share-check 0 $($_.Params)"
+							Arguments      = "--api 127.0.0.1:`$mport -d $($DeviceIDsAll) -o $($Pool_Protocol)://$($Pools.$MainAlgorithm_Norm.Host):$($Pool_Port) -u $($Pools.$MainAlgorithm_Norm.User)$(if ($Pools.$MainAlgorithm_Norm.Pass) {" -p $($Pools.$MainAlgorithm_Norm.Pass)"})$(if ($FailoverMain) {" $FailoverMain"}) --no-watchdog$(if ($Pools.$MainAlgorithm_Norm.Host -notmatch "Flexpool|Nicehash") {" --share-check 0"}) $($_.Params)"
 							HashRates      = [PSCustomObject]@{$MainAlgorithm_Norm = $Global:StatsCache."$($Miner_Name)_$($MainAlgorithm_Norm_0)_HashRate".Week * $(if ($_.Penalty) {1-$_.Penalty/100} else {1})}
 							API            = "NBminer"
 							Port           = $Miner_Port
@@ -148,6 +138,8 @@ foreach ($Miner_Vendor in @("AMD","NVIDIA")) {
                             PowerDraw      = 0
                             BaseName       = $Name
                             BaseAlgorithm  = $MainAlgorithm_Norm_0
+                            Benchmarked    = $Global:StatsCache."$($Miner_Name)_$($MainAlgorithm_Norm_0)_HashRate".Benchmarked
+                            LogFile        = $Global:StatsCache."$($Miner_Name)_$($MainAlgorithm_Norm_0)_HashRate".LogFile
                             EnvVars        = $Miner_EnvVars
 						}
 					} else {
@@ -177,7 +169,7 @@ foreach ($Miner_Vendor in @("AMD","NVIDIA")) {
 							DeviceName     = $Miner_Device.Name
 							DeviceModel    = $Miner_Model
 							Path           = $Path
-							Arguments      = "--api 127.0.0.1:`$mport -d $($DeviceIDsAll) -o $($Pool_Protocol2)://$($Pools.$SecondAlgorithm_Norm.Host):$($Pool_Port2) -u $($Pools.$SecondAlgorithm_Norm.User)$(if ($Pools.$SecondAlgorithm_Norm.Pass) {" -p $($Pools.$SecondAlgorithm_Norm.Pass)"})$(if ($FailoverSecondary) {" $FailoverSecondary"}) -do $($Pool_Protocol)://$($Pools.$MainAlgorithm_Norm.Host):$($Pool_Port) -du $($Pools.$MainAlgorithm_Norm.User)$(if ($Pools.$MainAlgorithm_Norm.Pass) {" -dp $($Pools.$MainAlgorithm_Norm.Pass)"})$EthCoin$(if ($FailoverMain) {" $FailoverMain"}) -di$($DeviceIntensitiesAll) --no-watchdog $($_.Params)"
+							Arguments      = "--api 127.0.0.1:`$mport -d $($DeviceIDsAll) -o $($Pool_Protocol2)://$($Pools.$SecondAlgorithm_Norm.Host):$($Pool_Port2) -u $($Pools.$SecondAlgorithm_Norm.User)$(if ($Pools.$SecondAlgorithm_Norm.Pass) {" -p $($Pools.$SecondAlgorithm_Norm.Pass)"})$(if ($FailoverSecondary) {" $FailoverSecondary"}) -do $($Pool_Protocol)://$($Pools.$MainAlgorithm_Norm.Host):$($Pool_Port) -du $($Pools.$MainAlgorithm_Norm.User)$(if ($Pools.$MainAlgorithm_Norm.Pass) {" -dp $($Pools.$MainAlgorithm_Norm.Pass)"})$(if ($FailoverMain) {" $FailoverMain"}) -di$($DeviceIntensitiesAll) --no-watchdog --no-health $($_.Params)"
 							HashRates      = [PSCustomObject]@{
                                                 $MainAlgorithm_Norm = $($Global:StatsCache."$($Miner_Name)_$($MainAlgorithm_Norm_0)_HashRate".Week * $(if ($_.Penalty) {1-$_.Penalty/100} else {1}))
                                                 $SecondAlgorithm_Norm = $($Global:StatsCache."$($Miner_Name)_$($SecondAlgorithm_Norm)_HashRate".Week * $(if ($_.Penalty) {1-$_.Penalty/100} else {1}))
@@ -198,6 +190,8 @@ foreach ($Miner_Vendor in @("AMD","NVIDIA")) {
                             PowerDraw      = 0
                             BaseName       = $Name
                             BaseAlgorithm  = "$($MainAlgorithm_Norm_0)-$($SecondAlgorithm_Norm)"
+                            Benchmarked    = $Global:StatsCache."$($Miner_Name)_$($MainAlgorithm_Norm_0)_HashRate".Benchmarked
+                            LogFile        = $Global:StatsCache."$($Miner_Name)_$($MainAlgorithm_Norm_0)_HashRate".LogFile
                             EnvVars        = if ($Miner_Vendor -eq "AMD") {@("GPU_FORCE_64BIT_PTR=0")}
 						}
 					}

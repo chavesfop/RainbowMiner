@@ -23,6 +23,8 @@ if ($IsLinux) {
     Start-Process ".\IncludesLinux\bash\libuv.sh" -Wait
     Write-Host "Install libcurl4 .."
     Start-Process ".\IncludesLinux\bash\libcurl4.sh" -Wait
+    Write-Host "Install libaprutil1 .."
+    Start-Process ".\IncludesLinux\bash\libaprutil1.sh" -Wait
     Write-Host "Install libopencl .."
     Start-Process ".\IncludesLinux\bash\libocl.sh" -Wait
     Write-Host "Install libjansson-dev .."
@@ -72,11 +74,19 @@ if ($IsWindows) {
         }
     }
 
-    Invoke-Expression ".\Includes\pci\lspci.exe" | Select-String "VGA compatible controller" | Tee-Object -Variable lspci | Tee-Object -FilePath ".\Data\gpu-count.txt" | Out-Null
+    @(try {
+        Get-CimInstance CIM_VideoController | Where-Object {
+            (Get-ItemProperty -path "HKLM:\SYSTEM\CurrentControlSet\Enum\$($_.PNPDeviceID)" -name locationinformation).locationInformation -match "\d+,\d+,\d+"
+        } | Foreach-Object {"$("{0:X2}:{1:X2}.{2:d}" -f ($Matches[0] -split "," | Foreach-Object {[int]$_})) $(if ($_.AdapterCompatibility -match "Advanced Micro Devices") {"$($Matches[0]) "})$($_.Name)"} | Sort-Object
+    }
+    catch {
+        if ($Error.Count){$Error.RemoveAt(0)}
+    }) | Tee-Object -Variable lspci | Tee-Object -FilePath ".\Data\gpu-count.txt" | Out-Null
 }
 
 Write-Host "Detecting GPUs .."
 $GNVIDIA = ($lspci | Where-Object {$_ -match "NVIDIA" -and $_ -notmatch "nForce"} | Measure-Object).Count
+$GINTEL  = ($lspci | Where-Object {$_ -match "INTEL"} | Measure-Object).Count
 $GAMD    = ($lspci | Where-Object {$_ -match "Advanced Micro Devices" -and $_ -notmatch "RS880" -and $_ -notmatch "Stoney"} | Measure-Object).Count
 
 if ($GNVIDIA) {
@@ -102,6 +112,18 @@ if ($GAMD) {
     }
     if ($GAMD -eq 1) {Write-Host " AMD GPU found."}
     else {Write-Host " $($GAMD) AMD GPUs found."}
+
+    if ($IsLinux) {
+        #if (Test-Path "/opt/amdgpu-pro/lib/x86_64-linux-gnu/libOpenCL.so.1.2") {
+        #    if (-not (Test-Path "/opt/amdgpu-pro/lib/x86_64-linux-gnu/libOpenCL.so")) {
+        #        Invoke-Exe -FilePath "ln" -ArgumentList "-nfs /opt/amdgpu-pro/lib/x86_64-linux-gnu/libOpenCL.so.1.2 /opt/amdgpu-pro/lib/x86_64-linux-gnu/libOpenCL.so" > $null
+        #        Invoke-Exe -FilePath "ldconfig" > $null
+        #        Write-Host " libOpenCL.so.1.2 found, but symbolic link needed to be created and ldconfig cache updated."
+        #    } else {
+        #        Write-Host " libOpenCL.so found."
+        #    }
+        #}
+    }
 }
 if (-not $GNVIDIA -and -not $GAMD) {
     Write-Host " No GPUs found."

@@ -59,7 +59,7 @@ $PoolCoins_Request | Get-Member -MemberType NoteProperty -ErrorAction Ignore | S
     $Pool_Coin = $PoolCoins_Request.$Pool_CoinSymbol.name
     $Pool_PoolFee = if ($PoolCoins_Request.$Pool_CoinSymbol.fee_solo -ne $null) {$PoolCoins_Request.$Pool_CoinSymbol.fee_solo} else {$Pool_Fee}
 
-    $Pool_EthProxy = if ($Pool_Algorithm_Norm -match $Global:RegexAlgoHasEthproxy) {"minerproxy"} elseif ($Pool_Algorithm_Norm -eq "KawPOW") {"stratum"} else {$null}
+    $Pool_EthProxy = if ($Pool_Algorithm_Norm -match $Global:RegexAlgoHasEthproxy) {"minerproxy"} elseif ($Pool_Algorithm_Norm -match $Global:RegexAlgoIsProgPow) {"stratum"} else {$null}
 
     $Divisor = 1e9
 
@@ -69,11 +69,8 @@ $PoolCoins_Request | Get-Member -MemberType NoteProperty -ErrorAction Ignore | S
         if (@("sha256","sha256t","blake","blakecoin","blake2s","decred","keccak","keccakc","lbry","vanilla") -icontains $Pool_Algorithm) {$Pool_Price /= 1000}
     }
 
-    $Pool_TSL = $PoolCoins_Request.$Pool_CoinSymbol.timesincelast_solo
-
     if (-not $InfoOnly) {
-        $Stat = Set-Stat -Name "$($Name)_$($Pool_CoinSymbol)_Profit" -Value ($Pool_Price / $Divisor) -Duration $StatSpan -ChangeDetection $false -HashRate $PoolCoins_Request.$Pool_CoinSymbol.hashrate_solo -BlockRate $PoolCoins_Request.$Pool_CoinSymbol."24h_blocks_solo" -Quiet
-        if (-not $Stat.HashRate_Live -and -not $AllowZero) {return}
+        $Stat = Set-Stat -Name "$($Name)_$($Pool_CoinSymbol)_Profit" -Value ($Pool_Price / $Divisor) -Duration $StatSpan -ChangeDetection $false -Difficulty $PoolCoins_Request.$Pool_CoinSymbol.difficulty -Quiet
     }
 
     $Pool_Params = if ($Params.$Pool_Currency) {",$($Params.$Pool_Currency)"}
@@ -97,10 +94,11 @@ $PoolCoins_Request | Get-Member -MemberType NoteProperty -ErrorAction Ignore | S
             SSL           = $false
             Updated       = $Stat.Updated
             PoolFee       = $Pool_PoolFee
-            Workers       = $PoolCoins_Request.$Pool_CoinSymbol.workers
-            Hashrate      = $Stat.HashRate_Live
-            BLK           = $Stat.BlockRate_Average
-            TSL           = $Pool_TSL
+            Workers       = $null
+            Hashrate      = $null
+            BLK           = $null
+            TSL           = $null
+            Difficulty    = $Stat.Diff_Average
             SoloMining    = $true
             EthMode       = $Pool_EthProxy
             Name          = $Name
@@ -108,6 +106,7 @@ $PoolCoins_Request | Get-Member -MemberType NoteProperty -ErrorAction Ignore | S
             PenaltyFactor = 1
             Disabled      = $false
             HasMinerExclusions = $false
+            Price_0       = 0.0
             Price_Bias    = 0.0
             Price_Unbias  = 0.0
             Wallet        = $Pool_User

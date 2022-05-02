@@ -150,7 +150,7 @@ $Global:DeviceCache.DevicesByTypes.AMD | Select-Object Vendor, Model -Unique | F
 								wallet = $($Pools.$Algorithm_Norm.User)
 								password = "$($Pools.$Algorithm_Norm.Pass)"
 								pool_use_tls = $($Pools.$Algorithm_Norm.SSL)
-								nicehash = $($Pools.$Algorithm_Norm.Name -match 'NiceHash')
+								nicehash = $($Pools.$Algorithm_Norm.Host -match 'NiceHash')
 							})
 						}
 						Params = "--apienable --apiport `$mport --apirigname $($Session.Config.Pools.$($Pools.$Algorithm_Norm.Name).Worker) --disabletweaking --disablegpuwatchdog --enablecoinforking --maxnosharesent 120 $($Params)".Trim()
@@ -176,6 +176,8 @@ $Global:DeviceCache.DevicesByTypes.AMD | Select-Object Vendor, Model -Unique | F
                     PowerDraw      = 0
                     BaseName       = $Name
                     BaseAlgorithm  = $Algorithm_Norm_0
+                    Benchmarked    = $Global:StatsCache."$($Miner_Name)_$($Algorithm_Norm_0)_HashRate".Benchmarked
+                    LogFile        = $Global:StatsCache."$($Miner_Name)_$($Algorithm_Norm_0)_HashRate".LogFile
 				}
 			}
 		}

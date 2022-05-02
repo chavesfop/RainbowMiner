@@ -32,7 +32,7 @@ if ($IsLinux) {
     )
 }
 
-if (-not $Global:DeviceCache.DevicesByTypes.NVIDIA -and -not $Global:DeviceCache.DevicesByTypes.AMD -and -not $InfoOnly) {return} # No GPU present in system
+if (-not $Global:DeviceCache.DevicesByTypes.NVIDIA -and -not $Global:DeviceCache.DevicesByTypes.AMD -and -not $Global:DeviceCache.DevicesByTypes.INTEL -and -not $InfoOnly) {return} # No GPU present in system
 
 $Commands = [PSCustomObject[]]@(
     [PSCustomObject]@{MainAlgorithm = "verthash"; MinMemGB = 2; Params = ""; ExtendInterval = 2} #VertHash
@@ -42,7 +42,7 @@ $Name = Get-Item $MyInvocation.MyCommand.Path | Select-Object -ExpandProperty Ba
 
 if ($InfoOnly) {
     [PSCustomObject]@{
-        Type      = @("AMD","NVIDIA")
+        Type      = @("AMD","INTEL","NVIDIA")
         Name      = $Name
         Path      = $Path
         Port      = $Miner_Port
@@ -74,7 +74,7 @@ if (-not (Test-Path $DatFile) -or (Get-Item $DatFile).length -lt 1.19GB) {
     $DatFile = Join-Path $Session.MainPath "Bin\Common\verthash.dat"
 }
 
-foreach ($Miner_Vendor in @("AMD","NVIDIA")) {
+foreach ($Miner_Vendor in @("AMD","INTEL","NVIDIA")) {
 	$Global:DeviceCache.DevicesByTypes.$Miner_Vendor | Where-Object Type -eq "GPU" | Where-Object {$_.Vendor -ne "NVIDIA" -or $Cuda} | Select-Object Vendor, Model -Unique | ForEach-Object {
         $Miner_Model = $_.Model
 		$Device = $Global:DeviceCache.DevicesByTypes.$Miner_Vendor.Where({$_.Model -eq $Miner_Model})
@@ -82,6 +82,7 @@ foreach ($Miner_Vendor in @("AMD","NVIDIA")) {
 		switch($_.Vendor) {
 			"NVIDIA" {$Miner_Deviceparams = "--cu-devices"; $Miner_DeviceIndex = "Type_Vendor_Index"}
 			"AMD" {$Miner_Deviceparams = "--cl-devices"; $Miner_DeviceIndex = "Type_Index"}
+            "INTEL" {$Miner_Deviceparams = "--cl-devices"; $Miner_DeviceIndex = "Type_Index"}
 			Default {$Miner_Deviceparams = "";$Miner_DeviceIndex = "Type_Index"}
 		}
 
@@ -124,6 +125,8 @@ foreach ($Miner_Vendor in @("AMD","NVIDIA")) {
                         PowerDraw        = 0
                         BaseName         = $Name
                         BaseAlgorithm    = $Algorithm_Norm_0
+                        Benchmarked      = $Global:StatsCache."$($Miner_Name)_$($Algorithm_Norm_0)_HashRate".Benchmarked
+                        LogFile          = $Global:StatsCache."$($Miner_Name)_$($Algorithm_Norm_0)_HashRate".LogFile
                         PrerequisitePath = $DatFile
                         PrerequisiteURI  = "https://github.com/RainbowMiner/miner-binaries/releases/download/v1.0-verthash/verthash.dat"
                         PrerequisiteMsg  = "Downloading verthash.dat (1.2GB) in the background, please wait!"

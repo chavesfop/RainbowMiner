@@ -2,6 +2,12 @@
         "2Miners" = [PSCustomObject]@{
             Currencies=@("FIRO")
         }
+        "2MinersAE" = [PSCustomObject]@{
+            Fields=[PSCustomObject]@{AECurrency=""}
+            SetupFields=[PSCustomObject]@{AECurrency = "Enter your 2MinersAE autoexchange currency"}
+            Autoexchange=$true
+            Currencies=@("BTC","NANO")
+        }
         "2MinersSolo" = [PSCustomObject]@{
             Currencies=@("FIRO")
         }
@@ -18,17 +24,17 @@
         "Acepool" = [PSCustomObject]@{
             Currencies=@("BEAM","XGM")
         }
-        "AHashPool" = [PSCustomObject]@{
-            Fields=[PSCustomObject]@{Penalty=22}
-            Currencies=@("BTC")
-            Autoexchange=$true
-            Yiimp=$true
-        }
         "Aionmine" = [PSCustomObject]@{
+            Currencies=@("AION")
+        }
+        "Aionpool" = [PSCustomObject]@{
             Currencies=@("AION")
         }
         "BaikalMine" = [PSCustomObject]@{
             Currencies=@("REOSC")
+        }
+        "BaikalMinePPS" = [PSCustomObject]@{
+            Currencies=@("ETH","ETC")
         }
         "BaikalMineSolo" = [PSCustomObject]@{
             Currencies=@("REOSC")
@@ -52,11 +58,13 @@
             Currencies=@("BTC")
             Autoexchange=$true
             Yiimp=$true
+            BalancesKeepAlive="90d"
         }
         "BlockmastersCoins" = [PSCustomObject]@{
             Fields=[PSCustomObject]@{Penalty=50}
             Currencies=@("BTC")
             Yiimp=$true
+            BalancesKeepAlive="90d"
         }
         "Bsod" = [PSCustomObject]@{
             Currencies=@("RVN","SIN")
@@ -76,11 +84,16 @@
         "BtcPrivate" = [PSCustomObject]@{
             Currencies=@("BTCP")
         }
-        "Cortexmint" = [PSCustomObject]@{
-            Currencies=@("CTXC")
+        "C3pool" = [PSCustomObject]@{
+            Fields=[PSCustomObject]@{Password="x"}
+            SetupFields=[PSCustomObject]@{Password="Enter your C3pool password (eMail or Password)"}
+            Currencies=@("XMR")
         }
         "CpuPool" = [PSCustomObject]@{
             Currencies=@("CPU","MBC")
+        }
+        "Crazypool" = [PSCustomObject]@{
+            Currencies=@("ETH","ETC","UBQ")
         }
         "CryptoKnight" = [PSCustomObject]@{
             Currencies=@("XWP")
@@ -92,8 +105,8 @@
             Currencies=@("ETH")
         }
         "Ezil" = [PSCustomObject]@{
-            Fields=[PSCustomObject]@{EnableNanominerDual="1"}
-            SetupFields=[PSCustomObject]@{EnableNanominerDual="If you set this to 1, Nanominer will dual mine ZIL on Ezil for various algorithms"}
+            Fields=[PSCustomObject]@{EnableLolminerDual="1";EnableNanominerDual="1";EnableTrexDual="1"}
+            SetupFields=[PSCustomObject]@{EnableLolminerDual="If you set this to 1, Lolminer will dual mine ZIL on Ezil for various algorithms";EnableNanominerDual="If you set this to 1, Nanominer will dual mine ZIL on Ezil for various algorithms";EnableTrexDual="If you set this to 1, Trex will dual mine ZIL on Ezil for Ethash"}
             Currencies=@("ETH","ETC","ZIL")
         }
         "F2pool" = [PSCustomObject]@{
@@ -105,9 +118,14 @@
             Currencies=@("XWP")
         }
         "FlexPool" = [PSCustomObject]@{
-            Currencies=@("ETH")
+            Currencies=@("ETC","ETH")
+        }
+        "FlockPool" = [PSCustomObject]@{
+            Currencies=@("RTM")
         }
         "FluxPools" = [PSCustomObject]@{
+            Fields=[PSCustomObject]@{Password="x"}
+            SetupFields=[PSCustomObject]@{Password="Enter your Fluxpools password"}
             Currencies=@("FLUX","FIRO","TCR")
         }
         "FlyPool" = [PSCustomObject]@{
@@ -142,7 +160,7 @@
             Yiimp=$true
         }
         "Hashpool" = [PSCustomObject]@{
-            Currencies=@("TRB","HNS","CKB")
+            Currencies=@("TON","HNS","CKB")
         }
         "Hashrefinery" = [PSCustomObject]@{
             Currencies=@("BTC")
@@ -156,13 +174,16 @@
             Currencies=@("RVN","XWP")
         }
         "HeroMiners" = [PSCustomObject]@{
-            Currencies=@("XWP")
+            Currencies=@("ERG","XWP")
         }
         "Hiveon" = [PSCustomObject]@{
             Currencies=@("ETH","ETC")
         }
         "Icemining" = [PSCustomObject]@{
             Currencies=@("SIN","MWC")
+        }
+        "KuCoin" = [PSCustomObject]@{
+            Currencies=@("ETH")
         }
         "LeafPool" = [PSCustomObject]@{
             Currencies=@("BEAM")
@@ -177,6 +198,22 @@
             Fields=[PSCustomObject]@{User=""}
             SetupFields=[PSCustomObject]@{User="Enter your Luxor username to enable automatic Catalyst mining"}
             Currencies=@("ARRR")
+        }
+        "Minafacil" = [PSCustomObject]@{
+            Currencies=@("RTM")
+        }
+        "MinafacilSolo" = [PSCustomObject]@{
+            Currencies=@("RTM")
+        }
+        "Minerpool" = [PSCustomObject]@{
+            Fields=[PSCustomObject]@{Password="xyz"}
+            SetupFields=[PSCustomObject]@{Password="Enter your Minerpool password (must NOT be x)"}
+            Currencies=@("FLUX","TENT","VDL")
+        }
+        "MinerpoolSolo" = [PSCustomObject]@{
+            Fields=[PSCustomObject]@{Password="xyz"}
+            SetupFields=[PSCustomObject]@{Password="Enter your Minerpool password (must NOT be x)"}
+            Currencies=@("FLUX","TENT","VDL")
         }
         "MinerRocks" = [PSCustomObject]@{
             Currencies=@("XMR")
@@ -217,8 +254,10 @@
                         API_Key=""
                         API_Secret=""
                         EnableMining="0"
+                        EnableMaintenanceMode="0"
                         UseWorkerName=""
                         ExcludeWorkerName=""
+                        ExcludeRentalId=""
                         EnableAutoCreate="0"
                         AutoCreateMinProfitPercent="50"
                         AutoCreateMinCPUProfitBTC="0.00001"
@@ -245,15 +284,21 @@
                         PriceFactorMin="1.2"
                         PriceFactorDecayPercent="0"
                         PriceFactorDecayTime="4h"
+                        PriceRiseExtensionPercent="0"
                         PowerDrawFactor="1.0"
                         MinHours="3"
                         MaxHours="48"
                         AllowExtensions="1"
+                        AllowRentalDuringPause="0"
                         PriceCurrencies="BTC"
                         Title = "%algorithmex% mining with RainbowMiner rig %rigid%"
                         Description = "Autostart mining with RainbowMiner (https://rbminer.net) on $(if ($IsWindows) {"Windows"} else {"Linux"}). This rig is idle and will activate itself, as soon, as you rent it. %workername%"
+                        StartMessage="Dear renter, thank you for renting my rig. It will be up-and-running in no time: offline pool or zero hashrate is normal in the first 5-10 minutes. Please allow at least 10 minutes to pass before raising an issue. Happy mining! (Automated message, do not respond)"
                         ExtensionMessageTime="2h"
                         ExtensionMessage="Dear renter, your rental will end soon. Now would be a good time to extend the rental, if you are happy with the result."
+                        PoolOfflineTime="3m"
+                        PoolOfflineRetryTime="15m"
+                        PoolOfflineMessage="Dear renter, it looks like your pool is currently offline. Please check your settings."
                         ProfitAverageTime="Day"
                         PauseBetweenRentals="10m"
                         UseHost=""
@@ -264,6 +309,8 @@
                         API_Secret = "Enter your MiningRigRentals API secret key"
                         UseWorkerName="Enter workernames to explicitly use (leave empty for all=default)"
                         ExcludeWorkerName="Enter workernames to explicitly exclude (leave empty for none=default)"
+                        ExcludeRentalId="In case of a rental dispute (wrong renter pool etc.), exclude these rentals by rental id, until they are cancelled (leave empty for none=default)"
+                        EnableMaintenanceMode="Enable maintenance mode - all unrented rigs will be disabled"
                         EnableAutoCreate="Automatically create MRR-rigs"
                         EnableAutoUpdate="Automatically update MRR-rigs"
                         EnableAutoBenchmark="Enable benchmark of missing algorithms (it will mine to RainbowMiner wallets during benchmark, only)"
@@ -287,6 +334,7 @@
                         PriceFactorMin="Minimum profit multiplicator (only of use, if PriceFactorDecayPercent is greater than 0)"
                         PriceFactorDecayPercent="Enter percentage for decay of the profit multiplicator over time (0 = disable)"
                         PriceFactorDecayTime="Enter the profit multiplicator decay interval (in seconds, verbose allowed, e.g. 1.5h = 1.5 hours, 30m = 30 minutes)"
+                        PriceRiseExtensionPercent="Enter price rise for extensions of a rental (in percent, e.g. 10 means 10% price rise)"
                         PowerDrawFactor="Enter powerdraw multiplicator (only if UsePowerPrice is enabled): minimum price = minimum price + (miner's power draw - rig's average power draw) 24 / 1000 x powerdrawprice x this multiplicator"
                         EnablePowerDrawAddOnly="Add the powerdraw cost difference only, if it is greater than 0"
                         EnableUpdateTitle="Enable automatic updating of rig titles (disable, if you prefer to edit your rig titles online at MRR)"
@@ -295,11 +343,16 @@
                         MinHours="Minimum rental time in hours (min. 3)"
                         MaxHours="Maximum rental time in hours (min. 3)"
                         AllowExtensions="Allow renters to buy extensions for a rental"
+                        AllowRentalDuringPause="Allow rentals, even if the mining rig is in pause mode."
                         EnableMining="Enable switching to MiningRigRentals, even it is not rentend (not recommended)"
                         Title="Title for autocreate, make sure it contains %algorithm% or %algorithmex% or %display, and %rigid% (values will be substituted like that: %algorithm% with algorithm, %algorithmex% with algorithm plus coin info if needed, %coininfo% with eventual coin info, %display% with MRR specific display title, %rigid% with an unique rigid, %workername% with the workername, %type% with either CPU or GPU, %typecpu% with CPU or empty, %typegpu% with GPU or empty)"
                         Description="Description for autocreate, %workername% will be substituted with rig's workername. Make sure you add [%workername%] (including the square brackets!)"
+                        StartMessage="Message, that will be sent to the renter at the start of the rental"
                         ExtensionMessageTime="Send the ExtensionMessage to the renter, when the remaining rental time drops below this value (in seconds, verbose allowed, e.g. 1.5h = 1.5 hours, 30m = 30 minutes, set to 0 or empty to disable)"
                         ExtensionMessage="Message, that will be sent to the renter, when remaining rental time drops below ExtensionMessageTime"
+                        PoolOfflineTime="Enter the time a renter's pools has to be offline, until it is temporary disabled and the pool offline message is sent (in seconds, verbose allowed, e.g. 1.5h = 1.5 hours, 30m = 30 minutes)"
+                        PoolOfflineRetryTime="Enter the time after which we will retry to connect to a disabled renter's pool (in seconds, verbose allowed, e.g. 1.5h = 1.5 hours, 30m = 30 minutes)"
+                        PoolOfflineMessage="Message, that will be sent to the renter, after a renter's pool has been offline for PoolOfflineTime"
                         ProfitAverageTime="Enter the device profit moving average time period (Minute,Minute_5,Minute_10,Hour,Day,ThreeDay,Week), Day is default"
                         PauseBetweenRentals="Disable rigs on MRR after a rental for some time (in seconds, verbose allowed, e.g. 1.5h = 1.5 hours, 30m = 30 minutes)"
                         UseHost="Force use of a specific host (use eu-de01, eu-ru01, us-central01 ...)"
@@ -325,33 +378,50 @@
             SetupFields=[PSCustomObject]@{OrganizationID="Enter your Nicehash Organization ID (pulls and adds NH balance)";API_Key = "Enter your Nicehash API key (pulls and adds NH balance)";API_Secret = "Enter your Nicehash API secret (pulls and adds NH balance)";EnableShowWallets="List your Nicehash wallets (0=no, 1=yes)"}
             Currencies=@("BTC")
             Autoexchange=$true
+            BalancesKeepAlive="180d"
         }
         "NLPool" = [PSCustomObject]@{
             Fields=[PSCustomObject]@{Penalty=16}
             Currencies=@("BTC")
             Autoexchange=$true
             Yiimp=$true
+            BalancesKeepAlive="30d"
         }
         "NLPoolCoins" = [PSCustomObject]@{
             Currencies=@("BTC")
             Yiimp=$true
+            BalancesKeepAlive="30d"
         }
         "Poolin" = [PSCustomObject]@{
-            Currencies=@("ETH","RVN")
+            Fields=[PSCustomObject]@{API_ETH_PUID="";API_ETH_ReadToken=""}
+            SetupFields=[PSCustomObject]@{API_ETH_PUID="For ETH balance, enter your miner subaccount puid (https://github.com/iblockin/pool_web_api_doc/blob/master/api_en.md)";API_ETH_ReadToken="For ETH balance, enter your miner subaccount read-token (starts with wow; https://github.com/iblockin/pool_web_api_doc/blob/master/api_en.md)"}
+            Currencies=@("ETH")
         }
         "Poolium" = [PSCustomObject]@{
             Fields=[PSCustomObject]@{API_Key="";Password="x"}
             SetupFields=[PSCustomObject]@{API_Key="Enter your poolium.win API-Key";Password="Enter your poolium.win password"}
             Currencies=@("VRM")
         }
-        "PoolSexy" = [PSCustomObject]@{
-            Currencies=@("DBIX")
-        }
         "ProHashing" = [PSCustomObject]@{
-            Fields=[PSCustomObject]@{User="";API_Key="";AECurrency="BTC";EnableAPIKeyForMiners="0"}
+            Fields=[PSCustomObject]@{User="";AECurrency="BTC";API_Key="";EnableAPIKeyForMiners="0"}
             SetupFields=[PSCustomObject]@{User="Enter your ProHashing username";API_Key="Enter your ProHashing API-Key for balance";AECurrency = "Enter your ProHashing autoexchange currency";EnableAPIKeyForMiners="Add API key to miners in case `"Require API key for miners`" has been enabled at the ProHashing account settings"}
             Currencies=@()
             Autoexchange=$true
+            BalancesKeepAlive="90d"
+        }
+        "ProHashingCoins" = [PSCustomObject]@{
+            Fields=[PSCustomObject]@{User="";PPMode="pps";API_Key="";EnableAPIKeyForMiners="0"}
+            SetupFields=[PSCustomObject]@{User="Enter your ProHashing username and select payout coins with CoinSymbol (or use separate wallet symbols with username in it)";PPMode="Enter the payout/mining mode (pps,pplns or solo)";API_Key="Enter your ProHashing API-Key for balance";AECurrency = "Enter your ProHashing autoexchange currency";EnableAPIKeyForMiners="Add API key to miners in case `"Require API key for miners`" has been enabled at the ProHashing account settings"}
+            Currencies=@()
+            Autoexchange=$true
+            BalancesKeepAlive="90d"
+        }
+        "ProHashingCoinsSolo" = [PSCustomObject]@{
+            Fields=[PSCustomObject]@{User="";API_Key="";EnableAPIKeyForMiners="0"}
+            SetupFields=[PSCustomObject]@{User="Enter your ProHashing username and select payout coins with CoinSymbol (or use separate wallet symbols with username in it)";API_Key="Enter your ProHashing API-Key for balance";AECurrency = "Enter your ProHashing autoexchange currency";EnableAPIKeyForMiners="Add API key to miners in case `"Require API key for miners`" has been enabled at the ProHashing account settings"}
+            Currencies=@()
+            Autoexchange=$true
+            BalancesKeepAlive="90d"
         }
         "Ravenminer" = [PSCustomObject]@{
             Currencies=@("RVN")
@@ -361,6 +431,9 @@
         }
         "RPlant" = [PSCustomObject]@{
             Currencies=@("BIN","CPU","MBC")
+        }
+        "SeroPool" = [PSCustomObject]@{
+            Currencies=@("SERO")
         }
         "SoloPool" = [PSCustomObject]@{
             Currencies=@("ETC","ETH","SAFE","SEL","XMR","XWP","ZERO")
@@ -380,13 +453,29 @@
         "Tecracoin" = [PSCustomObject]@{
             Currencies=@("TCR")
         }
+        "ToncoinPool" = [PSCustomObject]@{
+            Currencies=@("TON")
+        }
+        "TonPool" = [PSCustomObject]@{
+            Currencies=@("TON")
+        }
+        "TONWhales" = [PSCustomObject]@{
+            Currencies=@("TON")
+        }
         "unMineable" = [PSCustomObject]@{
             Currencies=@("BTC","BTT","ETH","TRX","UNI","XTZ","YFI")
         }
         "UUpool" = [PSCustomObject]@{
             Currencies=@("VOLLAR")
         }
+        "ViaBTC" = [PSCustomObject]@{
+            Fields=[PSCustomObject]@{"ETH-PaymentMode"="pplns";"ETC-PaymentMode"="pplns";API_Key=""}
+            SetupFields=[PSCustomObject]@{"ETH-PaymentMode" = "Enter your ETH-setup payment mode (pps, pplns or solo) for proper fee calculation";"ETC-PaymentMode" = "Enter your ETC-setup payment mode (pps, pplns or solo) for proper fee calculation";API_Key = "Enter your ViaBTC API key (adds your balance)"}
+            Currencies=@("ETH","ETC")
+            Autoexchange=$true
+        }
         "WoolyPooly" = [PSCustomObject]@{
+            Fields=[PSCustomObject]@{Penalty=30}
             Currencies=@("CFX","ETH","VEIL")
         }
         "WoolyPoolySolo" = [PSCustomObject]@{
@@ -398,24 +487,28 @@
             Currencies=@("BTC")
             Autoexchange=$true
             Yiimp=$true
+            BalancesKeepAlive="90d"
         }
         "ZergPoolCoins" = [PSCustomObject]@{
             Fields=[PSCustomObject]@{AECurrency="";Penalty=12}
             SetupFields=[PSCustomObject]@{AECurrency="Optionally define your autoexchange currency symbol"}
             Currencies=@("BTC")
             Yiimp=$true
+            BalancesKeepAlive="90d"
         }
         "ZergPoolCoinsParty" = [PSCustomObject]@{
             Fields=[PSCustomObject]@{AllowZero="1";PartyPassword="";AECurrency="";Penalty=12}
             SetupFields=[PSCustomObject]@{AECurrency="Optionally define your autoexchange currency symbol";PartyPassword="Enter your Party password"}
             Currencies=@("BTC")
             Yiimp=$true
+            BalancesKeepAlive="90d"
         }
         "ZergPoolCoinsSolo" = [PSCustomObject]@{
             Fields=[PSCustomObject]@{AllowZero="1";AECurrency="";Penalty=12}
             SetupFields=[PSCustomObject]@{AECurrency="Optionally define your autoexchange currency symbol"}
             Currencies=@("BTC")
             Yiimp=$true
+            BalancesKeepAlive="90d"
         }
         "ZergPoolParty" = [PSCustomObject]@{
             Fields=[PSCustomObject]@{AllowZero="1";PartyPassword="";AECurrency="";Penalty=12}
@@ -423,6 +516,7 @@
             Currencies=@("BTC")
             Autoexchange=$true
             Yiimp=$true
+            BalancesKeepAlive="90d"
         }
         "ZergPoolSolo" = [PSCustomObject]@{
             Fields=[PSCustomObject]@{AllowZero="1";Penalty=12}
@@ -430,6 +524,7 @@
             Currencies=@("BTC")
             Autoexchange=$true
             Yiimp=$true
+            BalancesKeepAlive="90d"
         }
         "Zpool" = [PSCustomObject]@{
             Fields=[PSCustomObject]@{AECurrency="";Penalty=16}
@@ -437,11 +532,13 @@
             Currencies=@("BTC")
             Autoexchange=$true
             Yiimp=$true
+            BalancesKeepAlive="90d"
         }
         "ZpoolCoins" = [PSCustomObject]@{
             Fields=[PSCustomObject]@{AECurrency="";Penalty=16}
             SetupFields=[PSCustomObject]@{AECurrency="Optionally define your autoexchange currency symbol"}
             Currencies=@("BTC")
             Yiimp=$true
+            BalancesKeepAlive="90d"
         }
 }

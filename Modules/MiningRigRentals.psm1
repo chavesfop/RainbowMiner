@@ -7,7 +7,7 @@
     $ConfigName = "MRR"
     if (-not (Test-Config $ConfigName)) {return}
     $PathToFile = $Session.ConfigFiles[$ConfigName].Path
-    if (-not (Test-Path $PathToFile) -or (Test-Config $ConfigName -LastWriteTime) -or (Get-ChildItem $PathToFile).LastWriteTime.ToUniversalTime() -lt (Get-ChildItem ".\Data\MRRConfigDefault.ps1").LastWriteTime.ToUniversalTime()) {
+    if (-not (Test-Path $PathToFile) -or (Test-Config $ConfigName -LastWriteTime) -or (Get-ChildItem $PathToFile).LastWriteTimeUtc -lt (Get-ChildItem ".\Data\MRRConfigDefault.ps1").LastWriteTimeUtc) {
         if (Test-Path $PathToFile) {
             $Preset = Get-ConfigContent $ConfigName
             if (-not $Session.ConfigFiles[$ConfigName].Healthy) {return}
@@ -15,7 +15,7 @@
         try {
             if ($Preset -is [string] -or -not $Preset.PSObject.Properties.Name) {$Preset = [PSCustomObject]@{}}
             $ChangeTag = Get-ContentDataMD5hash($Preset)
-            $Default = [PSCustomObject]@{UseWorkerName="";ExcludeWorkerName="";EnableAutoCreate="";AutoCreateMinProfitPercent="";AutoCreateMinProfitBTC="";AutoCreateMaxMinHours="";AutoUpdateMinPriceChangePercent="";AutoCreateAlgorithm="";EnableAutoUpdate="";EnableAutoExtend="";AutoExtendTargetPercent="";AutoExtendMaximumPercent="";AutoBonusExtendForHours="";AutoBonusExtendByHours="";AutoBonusExtendTimes="";EnableAutoPrice="";EnableMinimumPrice="";EnableUpdateTitle="";EnableUpdateDescription="";EnableUpdatePriceModifier="";EnablePowerDrawAddOnly="";AutoPriceModifierPercent="";PriceBTC="";PriceFactor="";PriceFactorMin="";PriceFactorDecayPercent="";PriceFactorDecayTime="";PowerDrawFactor="";MinHours="";MaxHours="";AllowExtensions="";PriceCurrencies="";Title = "";Description = "";ProfitAverageTime = ""}
+            $Default = [PSCustomObject]@{EnableAutoCreate="";AutoCreateMinProfitPercent="";AutoCreateMinProfitBTC="";AutoCreateMaxMinHours="";AutoUpdateMinPriceChangePercent="";AutoCreateAlgorithm="";EnableAutoUpdate="";EnableAutoExtend="";AutoExtendTargetPercent="";AutoExtendMaximumPercent="";AutoBonusExtendForHours="";AutoBonusExtendByHours="";AutoBonusExtendTimes="";EnableAutoPrice="";EnableMinimumPrice="";EnableUpdateTitle="";EnableUpdateDescription="";EnableUpdatePriceModifier="";EnablePowerDrawAddOnly="";AutoPriceModifierPercent="";PriceBTC="";PriceFactor="";PriceFactorMin="";PriceFactorDecayPercent="";PriceFactorDecayTime="";PriceRiseExtensionPercent="";PowerDrawFactor="";MinHours="";MaxHours="";AllowExtensions="";AllowRentalDuringPause="";PriceCurrencies="";Title ="";Description="";ProfitAverageTime=""}
             $Setup = Get-ChildItemContent ".\Data\MRRConfigDefault.ps1"
             
             foreach ($RigName in @(@($Setup.PSObject.Properties.Name | Select-Object) + @($Workers) | Select-Object -Unique)) {
@@ -40,6 +40,94 @@
     Test-Config $ConfigName -Exists
 }
 
+function Set-MiningRigRentalAlgorithmsConfigDefault {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $False)]
+        [String]$Folder = "",
+        [Parameter(Mandatory = $False)]
+        [Switch]$Force = $false
+    )
+    $ConfigName = "$(if ($Folder) {"$Folder/"})MRRAlgorithms"
+    if (-not (Test-Config $ConfigName)) {return}
+    $PathToFile = $Session.ConfigFiles[$ConfigName].Path
+    if ($Force -or -not (Test-Path $PathToFile) -or (Test-Config $ConfigName -LastWriteTime) -or (Get-ChildItem $PathToFile).LastWriteTimeUtc -lt (Get-ChildItem ".\Data\MRRAlgorithmsConfigDefault.ps1").LastWriteTimeUtc) {
+        if (Test-Path $PathToFile) {
+            $Preset = Get-ConfigContent $ConfigName
+            if (-not $Session.ConfigFiles[$ConfigName].Healthy) {return}
+        }
+        try {
+            if ($Preset -is [string] -or -not $Preset.PSObject.Properties.Name) {$Preset = [PSCustomObject]@{}}
+            $ChangeTag = Get-ContentDataMD5hash($Preset)
+            $Default = [PSCustomObject]@{Enable="1";PriceModifierPercent="";PriceFactor="";PriceFactorMin="";PriceFactorDecayPercent="";PriceFactorDecayTime="";PriceRiseExtensionPercent="";AllowExtensions=""}
+            $Setup = Get-ChildItemContent ".\Data\MRRAlgorithmsConfigDefault.ps1"
+            $AllAlgorithms = Get-MiningRigRentalAlgos
+            foreach ($Algorithm in $AllAlgorithms) {
+                $Algorithm_Norm = Get-MiningRigRentalAlgorithm $Algorithm.name
+                if (-not $Preset.$Algorithm_Norm) {$Preset | Add-Member $Algorithm_Norm $(if ($Setup.$Algorithm_Norm) {$Setup.$Algorithm_Norm} else {[PSCustomObject]@{}}) -Force}
+                foreach($SetupName in $Default.PSObject.Properties.Name) {if ($Preset.$Algorithm_Norm.$SetupName -eq $null){$Preset.$Algorithm_Norm | Add-Member $SetupName $Default.$SetupName -Force}}
+            }
+            $Sorted = [PSCustomObject]@{}
+            $Preset.PSObject.Properties.Name | Sort-Object | Foreach-Object {                
+                foreach($SetupName in $Default.PSObject.Properties.Name) {if ($Preset.$_.$SetupName -eq $null){$Preset.$_ | Add-Member $SetupName $Default.$SetupName -Force}}
+                $Sorted | Add-Member $_ $Preset.$_ -Force
+            }
+            Set-ContentJson -PathToFile $PathToFile -Data $Sorted -MD5hash $ChangeTag > $null
+            $Session.ConfigFiles[$ConfigName].Healthy = $true
+        }
+        catch{
+            if ($Error.Count){$Error.RemoveAt(0)}
+            Write-Log -Level Warn "Could not write to $(([IO.FileInfo]$PathToFile).Name). $($_.Exception.Message)"
+            $Session.ConfigFiles[$ConfigName].Healthy = $false
+        }
+    }
+    Test-Config $ConfigName -Exists
+}
+
+function Update-MiningRigRentalAlgorithmsConfig {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $False)]
+        [Int]$UpdateInterval = 3600
+    )
+
+    $AllAlgorithms = Get-ConfigContent "MRRAlgorithms" -UpdateLastWriteTime
+
+    if (Test-Config "MRRAlgorithms" -Health) {
+        $Session.Config | Add-Member MRRAlgorithms ([PSCustomObject]@{}) -Force
+        $AllAlgorithms.PSObject.Properties.Name | Where-Object {-not $Session.Config.Algorithm.Count -or $Session.Config.Algorithm -icontains $_} | Foreach-Object {
+            $a = $_
+            $Session.Config.MRRAlgorithms | Add-Member $a $AllAlgorithms.$a -Force
+
+            $Algo_Params = [ordered]@{
+                Enable          = $(if ($Session.Config.MRRAlgorithms.$a.Enable -ne $null) {Get-Yes $Session.Config.MRRAlgorithms.$a.Enable} else {$true})
+                AllowExtensions = $(if ($Session.Config.MRRAlgorithms.$a.AllowExtensions -ne "" -and $Session.Config.MRRAlgorithms.$a.AllowExtensions -ne $null) {Get-Yes $Session.Config.MRRAlgorithms.$a.AllowExtensions} else {$null})
+            }
+            foreach ($Algo_Param in @("PriceModifierPercent","PriceFactor","PriceFactorMin","PriceFactorDecayPercent","PriceFactorDecayTime","PriceRiseExtensionPercent")) {
+                if ($Algo_Param -match "Time$") {
+                    $val = "$($Session.Config.MRRAlgorithms.$a.$Algo_Param)".Trim()
+                    $Algo_Params[$Algo_Param] = if ($val -ne "") {[Math]::Max((ConvertFrom-Time "$($val)"),$UpdateInterval) / 3600} else {$null}
+                } else {
+                    $val = "$($Session.Config.MRRAlgorithms.$a.$Algo_Param -replace ",","." -replace "[^\d\.\-]+")"
+                    $Algo_Params[$Algo_Param] = if ($val -ne "") {[Double]$(if ($val.Length -le 1) {$val -replace "[^0-9]"} else {$val[0] + "$($val.Substring(1) -replace "[^0-9\.]")"})} else {$null}
+                }
+            }
+            if ($Algo_Params["PriceModifierPercent"] -ne $Null) {
+                $Algo_Params["PriceModifierPercent"] = [Math]::Max(-30,[Math]::Min(30,[Math]::Round($Algo_Params["PriceModifierPercent"],2)))
+            }
+                
+            $Algo_Params.GetEnumerator() | Foreach-Object {
+                if ([bool]$Session.Config.MRRAlgorithms.$a.PSObject.Properties["$($_.Name)"]) {
+                    $Session.Config.MRRAlgorithms.$a."$($_.Name)" = $_.Value
+                } else {
+                    $Session.Config.MRRAlgorithms.$a | Add-Member "$($_.Name)" $_.Value -Force
+                }
+            }
+        }
+    }
+    if ($AllAlgorithms -ne $null) {Remove-Variable "AllAlgorithms"}
+}
+
 function Invoke-MiningRigRentalRequest {
 [cmdletbinding()]   
 param(    
@@ -56,6 +144,12 @@ param(
     [Parameter(Mandatory = $False)]
     [String]$base = "https://www.miningrigrentals.com/api/v2",
     [Parameter(Mandatory = $False)]
+    [String]$regex = "",
+    [Parameter(Mandatory = $False)]
+    [String]$regexfld = "",
+    [Parameter(Mandatory = $False)]
+    [Bool]$regexmatch = $true,
+    [Parameter(Mandatory = $False)]
     [int]$Timeout = 15,
     [Parameter(Mandatory = $False)]
     [int]$Cache = 0,
@@ -70,7 +164,9 @@ param(
     [Parameter(Mandatory = $False)]
     [switch]$ForceLocal,
     [Parameter(Mandatory = $False)]
-    [switch]$Raw
+    [switch]$Raw,
+    [Parameter(Mandatory = $False)]
+    [switch]$Force = $false
 )
 
     if ($JobKey -and $JobData) {
@@ -80,16 +176,24 @@ param(
         $params    = $JobData.params
         $method    = $JobData.method
         $base      = $JobData.base
+        $regex     = $JobData.regex
+        $regexfld  = $JobData.regexfld
+        $regexmatch= $JobData.regexmatch
         $Timeout   = $JobData.timeout
-        $Cache     = $JobData.cache
         $ForceLocal= $JobData.forcelocal
         $Raw       = $JobData.raw
+        $cycletime = $JobData.cycletime
+        $retry     = $JobData.retry
+        $retrywait = $JobData.retrywait
     } else {
-        $JobKey = Get-MD5Hash "$($method)$($endpoint)$(Get-HashtableAsJson $params)"
+        $JobKey = Get-MD5Hash "$($base)$($method)$($endpoint)$($regexfld)$($regex)$($regexmatch)$(Get-HashtableAsJson $params)"
+        $cycletime = $retry = $retrywait = 0
     }
 
-    if ($Session.MRRCache -eq $null) {[hashtable]$Session.MRRCache = @{}}
-    if (-not $Cache -or -not $Session.MRRCache[$JobKey] -or -not $Session.MRRCache[$JobKey].request -or -not $Session.MRRCache[$JobKey].request.success -or $Session.MRRCache[$JobKey].last -lt (Get-Date).ToUniversalTime().AddSeconds(-$Cache)) {
+    $Result = $null
+
+    if (-not (Test-Path Variable:Global:MRRCache)) {[hashtable]$Global:MRRCache = @{}}
+    if (-not $Cache -or $Force -or -not $Global:MRRCache[$JobKey] -or -not $Global:MRRCache[$JobKey].request -or -not $Global:MRRCache[$JobKey].request.success -or $Global:MRRCache[$JobKey].last -lt (Get-Date).ToUniversalTime().AddSeconds(-$Cache)) {
 
         $Remote = $false
 
@@ -109,15 +213,22 @@ param(
                     params    = $params_local | ConvertTo-Json -Depth 10 -Compress
                     method    = $method
                     base      = $base
+                    regex     = $regex
+                    regexfld  = $regexfld
+                    regexmatch= $regexmatch
                     timeout   = $timeout
                     nonce     = $nonce
+                    cycletime = $cycletime
+                    retry     = $retry
+                    retrywait = $retrywait
                     machinename = $Session.MachineName
                     workername  = $Config.Workername
                     myip      = $Session.MyIP
                 }
                 try {
-                    $Result = Invoke-GetUrl "http://$($Config.ServerName):$($Config.ServerPort)/getmrr" -body $serverbody -user $Config.ServerUser -password $Config.ServerPassword -ForceLocal
-                    if ($Result.Status) {$Data = $Result.Content;$Remote = $true}
+                    $GetMrr_Result = Invoke-GetUrl "http://$($Config.ServerName):$($Config.ServerPort)/getmrr" -body $serverbody -user $Config.ServerUser -password $Config.ServerPassword -ForceLocal -Timeout 30
+                    if ($GetMrr_Result.Status) {$Data = $GetMrr_Result.Content;$Remote = $true}
+                    if ($GetMrr_Result -ne $null) {$GetMrr_Result = $null}
                     #Write-Log -Level Info "MRR server $($method): endpoint=$($endpoint) params=$($serverbody.params)"
                 } catch {
                     if ($Error.Count){$Error.RemoveAt(0)}
@@ -157,21 +268,52 @@ param(
             Write-Log -Level Warn "MiningRigRental error: $(if ($Data.data.message) {$Data.data.message} else {"unknown"})"
         }
 
-        if (-not $Session.MRRCache[$JobKey] -or ($Data -and $Data.success)) {
-            $Session.MRRCache[$JobKey] = [PSCustomObject]@{last = (Get-Date).ToUniversalTime(); request = $Data; cachetime = $Cache}
+        if (($Data -and $Data.success) -or -not $Cache -or -not $Global:MRRCache[$JobKey]) {
+            if ($regex -and $regexfld -and $Data.data) {
+                if ($regexmatch) {
+                    $Data.data = $Data.data | Where-Object {$_.$regexfld -match $regex}
+                } else {
+                    $Data.data = $Data.data | Where-Object {$_.$regexfld -notmatch $regex}
+                }
+            }
+            $Result = [PSCustomObject]@{last = (Get-Date).ToUniversalTime(); request = $Data; cachetime = $Cache}
         }
+        if ($Data -ne $null) {$Data = $null}
     }
-    if ($Raw) {$Session.MRRCache[$JobKey].request}
-    else {
-        if ($Session.MRRCache[$JobKey].request -and $Session.MRRCache[$JobKey].request.success) {$Session.MRRCache[$JobKey].request.data}
+
+    if ($Cache) {
+        if ($Result -eq $null) {
+            if ($Global:MRRCache[$JobKey]) {
+                $Result = $Global:MRRCache[$JobKey]
+            }
+        } else {
+            $Global:MRRCache[$JobKey] = $Result
+        }
+    } elseif ($Global:MRRCache.ContainsKey($JobKey)) {
+        $Global:MRRCache[$JobKey] = $null
+        $Global:MRRCache.Remove($JobKey)
+    }
+
+    if ($Result -ne $null) {
+        if ($Raw) {$Result.request}
+        else {
+            if ($Result.request -and $Result.request.success) {$Result.request.data}
+        }
+        $Result = $null
     }
 
     try {
-        if ($Session.MRRCacheLastCleanup -eq $null -or $Session.MRRCacheLastCleanup -lt (Get-Date).AddMinutes(-10).ToUniversalTime()) {
-            if ($RemoveKeys = $Session.MRRCache.Keys | Where-Object {$_ -ne $JobKey -and $Session.MRRCache.$_.last -lt (Get-Date).AddSeconds(-[Math]::Max(3600,$Session.MRRCache.$_.cachetime)).ToUniversalTime()} | Select-Object) {
-                $RemoveKeys | Foreach-Object {$Session.MRRCache[$_] = $null; $Session.MRRCache.Remove($_)}
+        if ($Global:MRRCacheLastCleanup -eq $null -or $Global:MRRCacheLastCleanup -lt (Get-Date).AddMinutes(-10).ToUniversalTime()) {
+            $Global:MRRCacheLastCleanup = (Get-Date).ToUniversalTime()
+            $CacheKeys = $Global:MRRCache.Keys
+            if ($RemoveKeys = $CacheKeys | Where-Object {$_ -ne $JobKey -and $Global:MRRCache.$_.last -lt (Get-Date).AddSeconds(-[Math]::Max(3600,$Global:MRRCache.$_.cachetime)).ToUniversalTime()} | Select-Object) {
+                $RemoveKeys | Foreach-Object {
+                    if ($Global:MRRCache.ContainsKey($_)) {
+                        $Global:MRRCache[$_] = $null
+                        $Global:MRRCache.Remove($_)
+                    }
+                }
             }
-            $Session.MRRCacheLastCleanup = (Get-Date).ToUniversalTime()
         }
     } catch {
         if ($Error.Count){$Error.RemoveAt(0)}
@@ -195,11 +337,13 @@ param(
     [Parameter(Mandatory = $False)]
     [String]$base = "https://www.miningrigrentals.com/api/v2",
     [Parameter(Mandatory = $False)]
+    [String]$regex = "",
+    [Parameter(Mandatory = $False)]
+    [String]$regexfld = "",
+    [Parameter(Mandatory = $False)]
+    [Bool]$regexmatch = $true,
+    [Parameter(Mandatory = $False)]
     [int]$Timeout = 15,
-    [Parameter(Mandatory = $False)]
-    [int]$Cache = 0,
-    [Parameter(Mandatory = $False)]
-    [int64]$nonce = 0,
     [Parameter(Mandatory = $False)]
     [string]$JobKey = "",
     [Parameter(Mandatory = $False)]
@@ -209,16 +353,23 @@ param(
     [Parameter(Mandatory = $False)]   
     [int]$cycletime = 0,
     [Parameter(Mandatory = $False)]   
+    [int]$retry = 0,
+    [Parameter(Mandatory = $False)]   
+    [int]$retrywait = 250,
+    [Parameter(Mandatory = $False)]   
     [switch]$force = $false,
     [Parameter(Mandatory = $False)]   
     [switch]$quiet = $false
 )
     if (-not $endpoint -and -not $Jobkey) {return}
 
-    if (-not $Jobkey) {$Jobkey = Get-MD5Hash "$($method)$($endpoint)$(Get-HashtableAsJson $params)";$StaticJobKey = $false} else {$StaticJobKey = $true}
+    if (-not $Jobkey) {$Jobkey = Get-MD5Hash "$($base)$($method)$($endpoint)$($regex)$($regexfld)$($regexmatch)$(Get-HashtableAsJson $params)";$StaticJobKey = $false} else {$StaticJobKey = $true}
+
+    $tag = "MiningRigRentals"
 
     if (-not (Test-Path Variable:Global:Asyncloader) -or -not $AsyncLoader.Jobs.$Jobkey) {
-        $JobData = [PSCustomObject]@{endpoint=$endpoint;key=$key;secret=$secret;params=$params;method=$method;base=$base;cache=$cache;forcelocal=$ForceLocal;raw=$Raw;Error=$null;Running=$true;Paused=$false;Success=0;Fail=0;Prefail=0;LastRequest=(Get-Date).ToUniversalTime();LastCacheWrite=$null;LastFailRetry=$null;CycleTime=$cycletime;Retry=0;RetryWait=0;Tag="MiningRigRentals";Timeout=$timeout;Index=0}
+        $JobHost = try{([System.Uri]$base).Host}catch{if($Error.Count){$Error.RemoveAt(0)};"www.miningrigrentals.com"}
+        $JobData = [PSCustomObject]@{endpoint=$endpoint;key=$key;secret=$secret;params=$params;method=$method;base=$base;regex=$regex;regexfld=$regexfld;regexmatch=$regexmatch;forcelocal=[bool]$ForceLocal;raw=[bool]$Raw;Host=$JobHost;Error=$null;Running=$true;Paused=$false;Success=0;Fail=0;Prefail=0;LastRequest=(Get-Date).ToUniversalTime();LastCacheWrite=$null;LastFailRetry=$null;LastFailCount=0;CycleTime=$cycletime;Retry=$retry;RetryWait=$retrywait;Tag=$tag;Timeout=$timeout;Index=0}
     }
 
     if (-not (Test-Path Variable:Global:Asyncloader)) {
@@ -227,9 +378,19 @@ param(
         return
     }
     
-    if ($StaticJobKey -and $endpoint -and $AsyncLoader.Jobs.$Jobkey -and ($AsyncLoader.Jobs.$Jobkey.endpoint -ne $endpoint -or $AsyncLoader.Jobs.$Jobkey.key -ne $key -or (Get-HashtableAsJson $AsyncLoader.Jobs.$Jobkey.params) -ne (Get-HashtableAsJson $params))) {$force = $true;$AsyncLoader.Jobs.$Jobkey.endpoint = $endpoint;$AsyncLoader.Jobs.$Jobkey.key = $key;$AsyncLoader.Jobs.$Jobkey.secret = $secret;$AsyncLoader.Jobs.$Jobkey.params = $params}
+    if ($StaticJobKey -and $endpoint -and $AsyncLoader.Jobs.$Jobkey -and ($AsyncLoader.Jobs.$Jobkey.endpoint -ne $endpoint -or $AsyncLoader.Jobs.$Jobkey.key -ne $key -or $AsyncLoader.Jobs.$Jobkey.regex -ne $regex -or $AsyncLoader.Jobs.$Jobkey.regexfld -ne $regexfld -or $AsyncLoader.Jobs.$Jobkey.regexmatch -ne $regexmatch -or (Get-HashtableAsJson $AsyncLoader.Jobs.$Jobkey.params) -ne (Get-HashtableAsJson $params))) {$force = $true;$AsyncLoader.Jobs.$Jobkey.endpoint = $endpoint;$AsyncLoader.Jobs.$Jobkey.key = $key;$AsyncLoader.Jobs.$Jobkey.secret = $secret;$AsyncLoader.Jobs.$Jobkey.params = $params}
 
-    if ($force -or -not $AsyncLoader.Jobs.$Jobkey -or $AsyncLoader.Jobs.$Jobkey.Paused -or -not $Session.MRRCache -or -not $Session.MRRCache[$JobKey]) {
+    if ($JobHost) {
+        if ($AsyncLoader.HostTags.$JobHost -eq $null) {
+            $AsyncLoader.HostTags.$JobHost = @($tag)
+        } elseif ($AsyncLoader.HostTags.$JobHost -notcontains $tag) {
+            $AsyncLoader.HostTags.$JobHost += $tag
+        }
+    }
+
+    if (-not (Test-Path ".\Cache")) {New-Item "Cache" -ItemType "directory" -ErrorAction Ignore > $null}
+
+    if ($force -or -not $AsyncLoader.Jobs.$Jobkey -or $AsyncLoader.Jobs.$Jobkey.Paused -or -not (Test-Path ".\Cache\$($Jobkey).asy") -or (Get-ChildItem ".\Cache\$($Jobkey).asy").LastWriteTimeUtc -lt (Get-Date).ToUniversalTime().AddSeconds(-$AsyncLoader.Jobs.$Jobkey.CycleTime*10)) {
         if (-not $AsyncLoader.Jobs.$Jobkey) {
             $AsyncLoader.Jobs.$Jobkey = $JobData
             $AsyncLoader.Jobs.$Jobkey.Index = $AsyncLoader.Jobs.Count
@@ -267,9 +428,9 @@ param(
             if ($retry -gt 0) {
                 if (-not $RequestError) {$retry = 0}
                 else {
-                    $Passed = $StopWatch.ElapsedMilliseconds
-                    if ($AsyncLoader.Jobs.$Jobkey.RetryWait -gt $Passed) {
-                        Start-Sleep -Milliseconds ($AsyncLoader.Jobs.$Jobkey.RetryWait - $Passed)
+                     $RetryWait_Time = [Math]::Min($AsyncLoader.Jobs.$Jobkey.RetryWait - $StopWatch.ElapsedMilliseconds,5000)
+                    if ($RetryWait_Time -gt 50) {
+                        Start-Sleep -Milliseconds $RetryWait_Time
                     }
                 }
             }
@@ -278,23 +439,66 @@ param(
         $StopWatch.Stop()
         $StopWatch = $null
 
+        if (-not $RequestError -and $Request) {
+            try {
+                $Request = $Request | ConvertTo-Json -Compress -Depth 10 -ErrorAction Stop
+            } catch {
+                if ($Error.Count){$Error.RemoveAt(0)}
+                $RequestError = "$($_.Exception.Message)"
+            } finally {
+                if ($RequestError) {$RequestError = "JSON problem: $($RequestError)"}
+            }
+        }
+
+        $CacheWriteOk = $false
+
         if ($RequestError -or -not $Request) {
             $AsyncLoader.Jobs.$Jobkey.Prefail++
             if ($AsyncLoader.Jobs.$Jobkey.Prefail -gt 5) {$AsyncLoader.Jobs.$Jobkey.Fail++;$AsyncLoader.Jobs.$Jobkey.Prefail=0}            
-        } elseif ($Session.MRRCache[$JobKey]) {
-            $AsyncLoader.Jobs.$Jobkey.LastCacheWrite=$Session.MRRCache[$JobKey].last
+        } else {
+            $retry = 3
+            do {
+                $RequestError = $null
+                try {
+                    Write-ToFile -FilePath ".\Cache\$($Jobkey).asy" -Message $Request -NoCR -ThrowError
+                    $CacheWriteOk = $true
+                } catch {
+                    if ($Error.Count){$Error.RemoveAt(0)}
+                    $RequestError = "$($_.Exception.Message)"                
+                }
+                $retry--
+                if ($retry -gt 0) {
+                    if (-not $RequestError) {$retry = 0}
+                    else {
+                        Start-Sleep -Milliseconds 500
+                    }
+                }
+            } until ($retry -le 0)
+        }
+
+        if ($CacheWriteOk) {
+            $AsyncLoader.Jobs.$Jobkey.LastCacheWrite=(Get-Date).ToUniversalTime()
+        }
+
+        if (-not (Test-Path ".\Cache\$($Jobkey).asy")) {
+            try {New-Item ".\Cache\$($Jobkey).asy" -ItemType File > $null} catch {if ($Error.Count){$Error.RemoveAt(0)}}
         }
 
         $AsyncLoader.Jobs.$Jobkey.Error = $RequestError
         $AsyncLoader.Jobs.$Jobkey.Running = $false
     }
     if (-not $quiet) {
-        if ($AsyncLoader.Jobs.$Jobkey.Error -and $AsyncLoader.Jobs.$Jobkey.Prefail -eq 0 -and -not $Session.MRRCache[$JobKey]) {throw $AsyncLoader.Jobs.$Jobkey.Error}
-        if ($Session.MRRCache -and $Session.MRRCache[$JobKey]) {
-            if ($Raw) {$Session.MRRCache[$JobKey].request}
-            else {
-                if ($Session.MRRCache[$JobKey].request -and $Session.MRRCache[$JobKey].request.success) {$Session.MRRCache[$JobKey].request.data}
+        if ($AsyncLoader.Jobs.$Jobkey.Error -and $AsyncLoader.Jobs.$Jobkey.Prefail -eq 0 -and -not (Test-Path ".\Cache\$($Jobkey).asy")) {throw $AsyncLoader.Jobs.$Jobkey.Error}
+        if (Test-Path ".\Cache\$($Jobkey).asy") {
+            try {
+                if (Test-IsPS7) {
+                    Get-ContentByStreamReader ".\Cache\$($Jobkey).asy" | ConvertFrom-Json -ErrorAction Stop
+                } else {
+                    $Data = Get-ContentByStreamReader ".\Cache\$($Jobkey).asy" | ConvertFrom-Json -ErrorAction Stop
+                    $Data
+                }
             }
+            catch {if ($Error.Count){$Error.RemoveAt(0)};Remove-Item ".\Cache\$($Jobkey).asy" -Force -ErrorAction Ignore;throw "Job $Jobkey contains clutter."}
         }
     }
 }
@@ -392,6 +596,65 @@ function Set-MiningRigStat {
     }
 }
 
+function Get-MiningRigRentalStat {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [String]$Name,
+        [Parameter(Mandatory = $false)]
+        [Int]$RentalId
+    )
+
+    $Path   = "Stats\MRR"
+
+    if (-not (Test-Path $Path)) {New-Item $Path -ItemType "directory" > $null}
+
+    $Path = "$($Path)\$($Name)_rental.txt"
+
+    $RentalError = $null
+
+    try {
+        $Stat = ConvertFrom-Json (Get-ContentByStreamReader $Path) -ErrorAction Stop
+        if ($RentalId -and ($Stat.id -ne $RentalId)) {
+            $RentalError = "obsolete"
+        }
+    } catch {
+        if ($Error.Count){$Error.RemoveAt(0)}
+        $RentalError = "corrupt"
+    }
+    if ($RentalError) {
+        if (Test-Path $Path) {
+            Write-Log -Level Warn "Stat file $([IO.Path]::GetFileName($Path)) is $($RentalError) and will be removed. "
+            Remove-Item -Path $Path -Force -Confirm:$false
+        }
+    } else {
+        $Stat
+    }
+}
+
+function Set-MiningRigRentalStat {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [String]$Name,
+        [Parameter(Mandatory = $true)]
+        [PSCustomObject]$Data
+    )
+
+    $Path = "Stats\MRR"
+
+    if (-not (Test-Path $Path)) {New-Item $Path -ItemType "directory" > $null}
+
+    $Path = "$($Path)\$($Name)_rental.txt"
+
+    try {
+        $Data | ConvertTo-Json -Depth 10 -ErrorAction Stop | Set-Content $Path
+    } catch {
+        if ($Error.Count){$Error.RemoveAt(0)}
+        Write-Log -Level Warn "Could not write MRR rental stat file for worker $Name, rental id $($Data.id)"
+    }
+}
+
 function Get-MiningRigInfo {
 [cmdletbinding()]   
 param(
@@ -404,8 +667,8 @@ param(
 )
     if (-not $id) {return}
 
-    if ($Session.MRRInfoCache -eq $null) {
-        [hashtable]$Session.MRRInfoCache = @{}
+    if (-not (Test-Path Variable:Global:MRRInfoCache)) {
+        [hashtable]$Global:MRRInfoCache = @{}
         if (Test-Path ".\Data\mrrinfo.json") {
             try {
                 $MrrInfo = Get-Content ".\Data\mrrinfo.json" -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
@@ -413,19 +676,19 @@ param(
                 if ($Error.Count){$Error.RemoveAt(0)}
                 $MrrInfo = @()
             }
-            $MrrInfo | Foreach-Object {$Session.MRRInfoCache["$($_.rigid)"] = $_}
+            $MrrInfo | Foreach-Object {$Global:MRRInfoCache["$($_.rigid)"] = $_}
         }
     }
 
-    if ($Rigs_Ids = $id | Where-Object {-not $Session.MRRInfoCache.ContainsKey("$_")-or $Session.MRRInfoCache."$_".port -eq "error" -or $Session.MRRInfoCache."$_".updated -lt (Get-Date).AddHours(-24).ToUniversalTime()} | Sort-Object) {
+    if ($Rigs_Ids = $id | Where-Object {-not $Global:MRRInfoCache.ContainsKey("$_") -or $Global:MRRInfoCache."$_".port -eq "error" -or $Global:MRRInfoCache."$_".updated -lt (Get-Date).AddHours(-24).ToUniversalTime()} | Sort-Object) {
         $Updated = 0
         @(Invoke-MiningRigRentalRequest "/rig/$($Rigs_Ids -join ";")/port" $key $secret -Timeout 60 | Select-Object) | Foreach-Object {
-            $Session.MRRInfoCache["$($_.rigid)"] = [PSCustomObject]@{rigid=$_.rigid;port=$_.port;server=$_.server;updated=(Get-Date).ToUniversalTime()}
+            $Global:MRRInfoCache["$($_.rigid)"] = [PSCustomObject]@{rigid=$_.rigid;port=$_.port;server=$_.server;updated=(Get-Date).ToUniversalTime()}
             $Updated++
         }
-        if ($Updated) {Set-ContentJson -PathToFile ".\Data\mrrinfo.json" -Data $Session.MRRInfoCache.Values -Compress > $null}
+        if ($Updated) {Set-ContentJson -PathToFile ".\Data\mrrinfo.json" -Data $Global:MRRInfoCache.Values -Compress > $null}
     }
-    $id | Where-Object {$Session.MRRInfoCache.ContainsKey("$_")} | Foreach-Object {$Session.MRRInfoCache."$_"}
+    $id | Where-Object {$Global:MRRInfoCache.ContainsKey("$_")} | Foreach-Object {$Global:MRRInfoCache."$_"}
 }
 
 function Get-MiningRigRentalsDivisor {
@@ -463,24 +726,34 @@ param(
     [Parameter(Mandatory = $False)]
     [Switch]$Stop,
     [Parameter(Mandatory = $False)]
-    [String]$Status = ""
+    [String]$Status = "",
+    [Parameter(Mandatory = $False)]
+    [int]$SecondsUntilOffline = 180,
+    [Parameter(Mandatory = $False)]
+    [int]$SecondsUntilRetry = 900
 )
     if ($Session.MRRStatus -eq $null) {[hashtable]$Session.MRRStatus = @{}}
-    $time = (Get-Date).ToUniversalTime()
     $RigKey = "$RigId"
-    if ($Session.MRRStatus.ContainsKey($RigKey)) {
-        if ($Stop) {$Session.MRRStatus.Remove($RigKey)}
-        elseif ($Status -eq "extended") {$Session.MRRStatus[$RigKey].extended = $true}
-        elseif ($Status -eq "notextended") {$Session.MRRStatus[$RigKey].extended = $false}
-        elseif ($Status -eq "extensionmessagesent") {$Session.MRRStatus[$RigKey].extensionmessagesent = $true}
-        elseif ($Status -eq "online") {$Session.MRRStatus[$RigKey].next = $time;$Session.MRRStatus[$RigKey].wait = $false;$Session.MRRStatus[$RigKey].enable = $true}
-        elseif ($time -ge $Session.MRRStatus[$RigKey].next) {
-            if ($Session.MRRStatus[$RigKey].wait) {$Session.MRRStatus[$RigKey].next = $time.AddMinutes(15);$Session.MRRStatus[$RigKey].wait = $Session.MRRStatus[$RigKey].enable = $false}
-            else {$Session.MRRStatus[$RigKey].next = $time.AddMinutes(3);$Session.MRRStatus[$RigKey].wait = $Session.MRRStatus[$RigKey].enable = $true}
-        }
-    } else {$Session.MRRStatus[$RigKey] = [PSCustomObject]@{next = $time.AddMinutes(3); wait = $true; enable = $true; extended = $(if ($Status -eq "extended") {$true} else {$false}); extensionmessagesent = $(if ($Status -eq "extensionmessagesent") {$true} else {$false})}}
-    
-    if (-not $Stop) {$Session.MRRStatus[$RigKey].enable}
+    if ($Stop) {
+        if ($Session.MRRStatus.ContainsKey($RigKey)) {$Session.MRRStatus.Remove($RigKey)}
+    } else {
+        $time = (Get-Date).ToUniversalTime()
+        if ($SecondsUntilOffline -lt 180) {$SecondsUntilOffline = 180}
+        if ($SecondsUntilRetry -lt 180) {$SecondsUntilRetry = 180}
+        if ($Session.MRRStatus.ContainsKey($RigKey)) {
+            if ($Status -eq "extended") {$Session.MRRStatus[$RigKey].extended = $true}
+            elseif ($Status -eq "notextended") {$Session.MRRStatus[$RigKey].extended = $false}
+            elseif ($Status -eq "extensionmessagesent") {$Session.MRRStatus[$RigKey].extensionmessagesent = $true}
+            elseif ($Status -eq "startmessagesent") {$Session.MRRStatus[$RigKey].startmessagesent = $true}
+            elseif ($Status -eq "poolofflinemessagesent") {$Session.MRRStatus[$RigKey].poolofflinemessagesent = $true}
+            elseif ($Status -eq "online") {$Session.MRRStatus[$RigKey].next = $time;$Session.MRRStatus[$RigKey].wait = $false;$Session.MRRStatus[$RigKey].enable = $true;$Session.MRRStatus[$RigKey].poolofflinemessagesent = $false}
+            elseif ($time -ge $Session.MRRStatus[$RigKey].next) {
+                if ($Session.MRRStatus[$RigKey].wait) {$Session.MRRStatus[$RigKey].next = $time.AddSeconds($SecondsUntilRetry);$Session.MRRStatus[$RigKey].wait = $Session.MRRStatus[$RigKey].enable = $false}
+                else {$Session.MRRStatus[$RigKey].next = $time.AddSeconds($SecondsUntilOffline);$Session.MRRStatus[$RigKey].wait = $Session.MRRStatus[$RigKey].enable = $true}
+            }
+        } else {$Session.MRRStatus[$RigKey] = [PSCustomObject]@{next = $time;wait = $false;enable = $true;extended = $(if ($Status -eq "extended") {$true} else {$false});extensionmessagesent = $(if ($Status -eq "extensionmessagesent") {$true} else {$false});startmessagesent = $(if ($Status -eq "startmessagesent") {$true} else {$false});poolofflinemessagesent = $(if ($Status -eq "poolofflinemessagesent") {$true} else {$false})}}
+        $Session.MRRStatus[$RigKey].enable
+    }
 }
 
 function Get-MiningRigRentalAlgos {
@@ -498,6 +771,8 @@ function Get-MiningRigRentalAlgos {
         Write-Log -Level Warn "Pool API ($Name/info/algos) returned nothing. "
         return
     }
+
+    $Pool_Request.data | Foreach-Object {$_.display = $_.display.Trim()}
 
     $Pool_Request.data
 }
@@ -550,11 +825,14 @@ param(
     [Parameter(Mandatory = $True)]
     [String]$secret,
     [Parameter(Mandatory = $True)]
-    [String[]]$workers,
-    [Parameter(Mandatory = $False)]
-    [Int]$Cache = 0
+    [String[]]$workers
 )
-    Invoke-MiningRigRentalRequestAsync "/rig/mine" $key $secret -Cache $Cache -cycletime $Session.Config.Interval | Where-Object description -match "\[($($workers -join '|'))\]"
+    $regex = "\[($($workers -join '|'))\]"
+    if ($Session.Config.RunMode -eq "Server") {
+        Invoke-MiningRigRentalRequestAsync "/rig/mine" $key $secret -cycletime 60 | Where-Object {$_.description -match $regex}
+    } else {
+        Invoke-MiningRigRentalRequestAsync "/rig/mine" $key $secret -cycletime 60 -regexfld "description" -regex $regex -regexmatch $true
+    }
 }
 
 function Get-MiningRigRentalsRigID {
@@ -592,17 +870,17 @@ Param(
     [Switch]$UpdateLocalCopy
 )
     try {
-        $PoolsData = Invoke-RestMethodAsync "https://rbminer.net/api/data/mrrpools.json" -Tag "MiningRigRentals" -cycletime 1800
+        $PoolsData = Invoke-RestMethodAsync "https://rbminer.net/api/data/mrrpoolsall.json" -Tag "MiningRigRentals" -cycletime 1800
         if ($UpdateLocalCopy) {
-            Set-ContentJson -PathToFile ".\Data\mrrpools.json" -Data $PoolsData -Compress > $null
+            Set-ContentJson -PathToFile ".\Data\mrrpoolsall.json" -Data $PoolsData -Compress > $null
         }
     } catch {
         if ($Error.Count){$Error.RemoveAt(0)}
-        Write-Log -Level Warn "Rbminer.net/api/data/mrrpools.json could not be reached"
+        Write-Log -Level Warn "Rbminer.net/api/data/mrrpoolsall.json could not be reached"
     }
     if (-not $PoolsData) {
         try {
-            $PoolsData = Get-ContentByStreamReader ".\Data\mrrpools.json" | ConvertFrom-Json -ErrorAction Stop
+            $PoolsData = Get-ContentByStreamReader ".\Data\mrrpoolsall.json" | ConvertFrom-Json -ErrorAction Stop
         } catch {if ($Error.Count){$Error.RemoveAt(0)}}
     }
     $PoolsData

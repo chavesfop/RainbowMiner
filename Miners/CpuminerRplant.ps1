@@ -8,17 +8,16 @@ param(
 if (-not $IsWindows -and -not $IsLinux) {return}
 
 $ManualUri = "https://github.com/rplant8/cpuminer-opt-rplant/releases"
-$Port = "532{0:d2}"
+$Port = "232{0:d2}"
 $DevFee = 0.0
-$Version = "5.0.21"
+$Version = "5.0.27"
 
 if ($IsLinux) {
     $Path = ".\Bin\CPU-Rplant\cpuminer-$($f = $Global:GlobalCPUInfo.Features;$(if($f.avx512){'avx512'}elseif($f.avx2 -and $f.sha -and $f.aes){'ryzen'}elseif($f.avx2 -and $f.aes){'avx2'}elseif($f.avx -and $f.aes){'avx'}elseif($f.sse42 -and $f.aes){'sse42-aes'}elseif($f.sse42){'sse42'}elseif($Global:GlobalCPUInfo.Vendor -eq "AMD"){'sse2amd'}else{'sse2'}))"
-    $URI = "https://github.com/RainbowMiner/miner-binaries/releases/download/v5.0.21-rplant/cpuminer-rplant-5.0.21-linux.tar.gz"
+    $URI = "https://github.com/RainbowMiner/miner-binaries/releases/download/v5.0.27-rplant/cpuminer-rplant-5.0.27-linux.tar.gz"
 } else {
     $Path = ".\Bin\CPU-Rplant\cpuminer-$($f = $Global:GlobalCPUInfo.Features;$(if($f.avx512){'avx512'}elseif($f.avx2 -and $f.sha -and $f.aes){'ryzen'}elseif($f.avx2 -and $f.aes){'avx2'}elseif($f.avx -and $f.aes){'avx'}elseif($f.sse42 -and $f.aes){'sse42-aes'}elseif($f.sse42){'sse42'}elseif($Global:GlobalCPUInfo.Vendor -eq "AMD"){'sse2amd'}else{'sse2'})).exe"
-    $Uri = "https://github.com/RainbowMiner/miner-binaries/releases/download/v5.0.20-rplant/cpuminer-rplant-5.0.20-win.zip"
-    $Version = "5.0.20"
+    $Uri = "https://github.com/RainbowMiner/miner-binaries/releases/download/v5.0.27-rplant/cpuminer-rplant-5.0.27-win.zip"
 }
 
 if (-not $Global:DeviceCache.DevicesByTypes.CPU -and -not $InfoOnly) {return} # No CPU present in system
@@ -48,7 +47,7 @@ $Commands = [PSCustomObject[]]@(
     #[PSCustomObject]@{MainAlgorithm = "curvehash"; Params = ""} #CurveHash/Oblivion, still broken in v4.5.18
     [PSCustomObject]@{MainAlgorithm = "decred"; Params = ""} #Deepcoin (DCN)
     [PSCustomObject]@{MainAlgorithm = "dmd-gr"; Params = ""} #Diamond
-    [PSCustomObject]@{MainAlgorithm = "gr"; Params = ""; FaultTolerance = 0.7; ExtendInterval = 3} #Ghostrider/Take5
+    [PSCustomObject]@{MainAlgorithm = "gr"; Params = ""; FaultTolerance = 8; ExtendInterval = 3; ExcludePoolName = "C3pool|MoneroOcean"} #Ghostrider/Take5
     [PSCustomObject]@{MainAlgorithm = "groestl"; Params = ""} #Groestl
     [PSCustomObject]@{MainAlgorithm = "heavyhash"; Params = ""} #HeavyHash
     [PSCustomObject]@{MainAlgorithm = "hex"; Params = ""} #h16r-hex
@@ -66,8 +65,9 @@ $Commands = [PSCustomObject[]]@(
     [PSCustomObject]@{MainAlgorithm = "lyra2rev3"; Params = ""} #Lyrav2v3
     #[PSCustomObject]@{MainAlgorithm = "lyra2tdc"; Params = ""} #Lyra2TDC
     [PSCustomObject]@{MainAlgorithm = "lyra2z"; Params = ""} #LYRA2z
-    [PSCustomObject]@{MainAlgorithm = "lyra2z330"; Params = ""; ExcludePoolName = "^Zpool"} #Lyra2z330
+    [PSCustomObject]@{MainAlgorithm = "lyra2z330"; Params = ""; ExcludePoolName = "Zpool"} #Lyra2z330
     [PSCustomObject]@{MainAlgorithm = "minotaur"; Params = ""} #Minotaur/RING
+    [PSCustomObject]@{MainAlgorithm = "minotaurx"; Params = ""; ExcludePoolName = "MiningRigRentals"} #Minotaurx
     [PSCustomObject]@{MainAlgorithm = "myr-gr"; Params = ""} #Myriad-groestl
     [PSCustomObject]@{MainAlgorithm = "neoscrypt"; Params = ""} #NeoScrypt(128,2,1)
     [PSCustomObject]@{MainAlgorithm = "nist5"; Params = ""} #NIST5
@@ -77,6 +77,7 @@ $Commands = [PSCustomObject[]]@(
     [PSCustomObject]@{MainAlgorithm = "phi5"; Params = ""} #Combode Coin
     [PSCustomObject]@{MainAlgorithm = "polytimos"; Params = ""} #Polytimos
     #[PSCustomObject]@{MainAlgorithm = "power2b"; Params = ""; MaxRejectedShareRatio = 0.7} #Yespower2b, Jayddee faster
+    #[PSCustomObject]@{MainAlgorithm = "phichox"; Params = ""} #phiCHOX/CHOX algo has changed 03/01/2022
     [PSCustomObject]@{MainAlgorithm = "quark"; Params = ""} #Quark
     [PSCustomObject]@{MainAlgorithm = "qubit"; Params = ""} #Qubit
     ####[PSCustomObject]@{MainAlgorithm = "qureno"; Params = ""} #X33 (new QRN) from v4.5.17 on
@@ -105,6 +106,7 @@ $Commands = [PSCustomObject[]]@(
     [PSCustomObject]@{MainAlgorithm = "yescryptr8g"; Params = ""} #YescryptR8g (KOTO)
     [PSCustomObject]@{MainAlgorithm = "yespower"; Params = ""} #Yespower
     [PSCustomObject]@{MainAlgorithm = "yespowerr16"; Params = ""} #YespowerR16
+    [PSCustomObject]@{MainAlgorithm = "yespowerARWN"; Params = ""} #Yespower Arowanacoin (ARWN)
     [PSCustomObject]@{MainAlgorithm = "yespowerIC"; Params = ""} #Yespower IsotopeC (IC)
     [PSCustomObject]@{MainAlgorithm = "yespowerITC"; Params = ""} #Yespower Intercoin (ITC)
     [PSCustomObject]@{MainAlgorithm = "yespowerIOTS"; Params = ""} #Yespower .. (IOTS)
@@ -148,7 +150,7 @@ $Global:DeviceCache.DevicesByTypes.CPU | Select-Object Vendor, Model -Unique | F
         $DeviceParams = "$(if ($CPUThreads){" -t $CPUThreads"})$(if ($CPUAffinity){" --cpu-affinity $CPUAffinity --no-smart"})"
 
 		foreach($Algorithm_Norm in @($Algorithm_Norm_0,"$($Algorithm_Norm_0)-$($Miner_Model)")) {
-			if ($Pools.$Algorithm_Norm.Host -and $Miner_Device -and (-not $_.ExcludePoolName -or $Pools.$Algorithm_Norm.Name -notmatch $_.ExcludePoolName)) {
+			if ($Pools.$Algorithm_Norm.Host -and $Miner_Device -and (-not $_.ExcludePoolName -or $Pools.$Algorithm_Norm.Host -notmatch $_.ExcludePoolName)) {
                 if ($First) {
                     $Miner_Port = $Port -f ($Miner_Device | Select-Object -First 1 -ExpandProperty Index)
                     $Miner_Name = (@($Name) + @($Miner_Device.Name | Sort-Object) | Select-Object) -join '-'
@@ -175,6 +177,9 @@ $Global:DeviceCache.DevicesByTypes.CPU | Select-Object Vendor, Model -Unique | F
                     PowerDraw      = 0
                     BaseName       = $Name
                     BaseAlgorithm  = $Algorithm_Norm_0
+                    Benchmarked    = $Global:StatsCache."$($Miner_Name)_$($Algorithm_Norm_0)_HashRate".Benchmarked
+                    LogFile        = $Global:StatsCache."$($Miner_Name)_$($Algorithm_Norm_0)_HashRate".LogFile
+                    ExcludePoolName = $_.ExcludePoolName
 				}
 			}
 		}

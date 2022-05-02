@@ -10,7 +10,8 @@ param(
     [Bool]$InfoOnly = $false,
     [Bool]$AllowZero = $false,
     [String]$StatAverage = "Minute_10",
-    [String]$StatAverageStable = "Week"
+    [String]$StatAverageStable = "Week",
+    [String]$Password = "x"
 )
 
 $Name = Get-Item $MyInvocation.MyCommand.Path | Select-Object -ExpandProperty BaseName
@@ -20,11 +21,11 @@ $Name = Get-Item $MyInvocation.MyCommand.Path | Select-Object -ExpandProperty Ba
 
 $Pools_Data = @(
     [PSCustomObject]@{symbol = "FLUX"; port = @(7011); fee = 1.0; rpc = "flux";  stratum = "flux.fluxpools.net"; regions = @("eu","us"); altsymbol = "ZEL"}
-    [PSCustomObject]@{symbol = "TCR";  port = @(2200); fee = 0.5; rpc = "tcr";   stratum = "tcr.zellabs.net";    regions = @("eu","us")}
-    [PSCustomObject]@{symbol = "FIRO"; port = @(7017); fee = 1.0; rpc = "firo";  stratum = "zcoin.zellabs.net";  regions = @("eu","us"); altsymbol = "XZC"}
 )
 
 $Pools_Requests = [hashtable]@{}
+
+if (-not $Password) {$Password = "x"}
 
 $Pools_Data | Where-Object {$Wallets."$($_.symbol)" -or ($_.altsymbol -and $Wallets."$($_.altsymbol)") -or $InfoOnly} | ForEach-Object {
     $Pool_Coin          = Get-Coin $_.symbol
@@ -74,7 +75,7 @@ $Pools_Data | Where-Object {$Wallets."$($_.symbol)" -or ($_.altsymbol -and $Wall
     }
 
     if ($ok -and -not $InfoOnly) {
-        $Pool_Hashrate = if ($Pool_Request.pools.$Pool_Name.hashrate -ne $null) {$Pool_Request.pools.$Pool_Name.hashrate} else {ConvertFrom-Hash "$($Pool_Request.pools.$Pool_Name.hashrateString)"}
+        $Pool_Hashrate = ConvertFrom-Hash "$($Pool_Request.pools.$Pool_Name.hashrateString)"
         $Stat = Set-Stat -Name "$($Name)_$($Pool_Currency)_Profit" -Value 0 -Duration $StatSpan -HashRate ([double]$Pool_Hashrate) -BlockRate $Pool_BLK -ChangeDetection $false -Quiet
         if (-not $Stat.HashRate_Live -and -not $AllowZero) {return}
     }
@@ -96,7 +97,7 @@ $Pools_Data | Where-Object {$Wallets."$($_.symbol)" -or ($_.altsymbol -and $Wall
                     Host          = "$($Pool_Region)-$($_.stratum)"
                     Port          = $Pool_Port
                     User          = "$($Pool_Wallet).{workername:$Worker}"
-                    Pass          = "x"
+                    Pass          = $Password
                     Region        = $Pool_RegionsTable.$Pool_Region
                     SSL           = $SSL
                     Updated       = $Stat.Updated
@@ -106,11 +107,13 @@ $Pools_Data | Where-Object {$Wallets."$($_.symbol)" -or ($_.altsymbol -and $Wall
                     TSL           = $Pool_TSL
                     BLK           = $Stat.BlockRate_Average
                     WTM           = $true
+                    WTMMode       = if ($Pool_Currency -eq "FLUX") {"WTM"} else {$null}
                     Name          = $Name
                     Penalty       = 0
                     PenaltyFactor = 1
 				    Disabled      = $false
 				    HasMinerExclusions = $false
+                    Price_0       = 0.0
 				    Price_Bias    = 0.0
 				    Price_Unbias  = 0.0
                     Wallet        = $Pool_Wallet

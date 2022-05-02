@@ -31,14 +31,14 @@ catch {
 
 $Pool_Request.PSObject.Properties.Value | Where-Object {$Pool_Currency = $_.currency;$Wallets.$Pool_Currency -or ($_.altsymbol -and $Wallets."$($_.altsymbol)") -or $InfoOnly} | ForEach-Object {
 
-    $Pool_Coin = Get-Coin $Pool_Currency
     $Pool_Algorithm_Norm = Get-Algorithm $_.algo
+    $Pool_Coin = Get-Coin $Pool_Currency -Algorithm $Pool_Algorithm_Norm
 
     if (-not ($Pool_Wallet = $Wallets.$Pool_Currency)) {
         $Pool_Wallet = $Wallets."$($_.altsymbol)"
     }
 
-    $Pool_EthProxy = if ($Pool_Algorithm_Norm -match $Global:RegexAlgoHasEthproxy) {"ethproxy"} elseif ($Pool_Algorithm_Norm -eq "KawPOW") {"stratum"} else {$null}
+    $Pool_EthProxy = if ($Pool_Algorithm_Norm -match $Global:RegexAlgoHasEthproxy) {"ethproxy"} elseif ($Pool_Algorithm_Norm -match $Global:RegexAlgoIsProgPow) {"stratum"} else {$null}
 
     if (-not $InfoOnly) {
         $Divisor  = ConvertFrom-Hash "1$($_.scale)"
@@ -79,6 +79,7 @@ $Pool_Request.PSObject.Properties.Value | Where-Object {$Pool_Currency = $_.curr
             PenaltyFactor = 1
             Disabled      = $false
             HasMinerExclusions = $false
+            Price_0       = 0.0
             Price_Bias    = 0.0
             Price_Unbias  = 0.0
             Wallet        = $Pool_Wallet

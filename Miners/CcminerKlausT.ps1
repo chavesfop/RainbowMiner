@@ -7,34 +7,61 @@ param(
 
 if (-not $IsWindows -and -not $IsLinux) {return}
 
+$ManualUri = "https://github.com/KlausT/ccminer/releases"
+$Port = "140{0:d2}"
+$DevFee = 0.0
+$Version = "8.26x2"
 
 if ($IsLinux) {
     $Path = ".\Bin\NVIDIA-KlausT\ccminer"
     $UriCuda = @(
         [PSCustomObject]@{
-            Uri = "https://github.com/RainbowMiner/miner-binaries/releases/download/v8.25-klaust/ccminer-825-yescrypt-cuda101-linux.7z"
-            Cuda = "10.1"
+            Uri = "https://github.com/RainbowMiner/miner-binaries/releases/download/v8.26-klaust/ccminerklaust-826x2-cuda116-linux.7z"
+            Cuda = "11.6"
+        },
+        [PSCustomObject]@{
+            Uri = "https://github.com/RainbowMiner/miner-binaries/releases/download/v8.26-klaust/ccminerklaust-826x2-cuda115-linux.7z"
+            Cuda = "11.5"
+        },
+        [PSCustomObject]@{
+            Uri = "https://github.com/RainbowMiner/miner-binaries/releases/download/v8.26-klaust/ccminerklaust-826x2-cuda114-linux.7z"
+            Cuda = "11.4"
+        },
+        [PSCustomObject]@{
+            Uri = "https://github.com/RainbowMiner/miner-binaries/releases/download/v8.26-klaust/ccminerklaust-826x2-cuda102-linux.7z"
+            Cuda = "10.2"
         }
     )
-    $Version = "8.25-yescrypt"
 } else {
     $Path = ".\Bin\NVIDIA-KlausT\ccminer.exe"
     $UriCuda = @(
         [PSCustomObject]@{
-            Uri = "https://github.com/RainbowMiner/miner-binaries/releases/download/v8.25-klaust/ccminer-825-cuda101-x64.7z"
-            Cuda = "10.1"
+            Uri = "https://github.com/RainbowMiner/miner-binaries/releases/download/v8.26-klaust/ccminerklaust-826x2-cuda116-x64.7z"
+            Cuda = "11.6"
+        },
+        [PSCustomObject]@{
+            Uri = "https://github.com/RainbowMiner/miner-binaries/releases/download/v8.26-klaust/ccminerklaust-826x2-cuda115-x64.7z"
+            Cuda = "11.5"
+        },
+        [PSCustomObject]@{
+            Uri = "https://github.com/RainbowMiner/miner-binaries/releases/download/v8.26-klaust/ccminerklaust-826x2-cuda114-x64.7z"
+            Cuda = "11.4"
+        },
+        [PSCustomObject]@{
+            Uri = "https://github.com/RainbowMiner/miner-binaries/releases/download/v8.26-klaust/ccminerklaust-826x2-cuda102-x64.7z"
+            Cuda = "10.2"
         }
     )
-    $Version = "8.25"
 }
-$ManualUri = "https://github.com/KlausT/ccminer/releases"
-$Port = "140{0:d2}"
-$DevFee = 0.0
 
 if (-not $Global:DeviceCache.DevicesByTypes.NVIDIA -and -not $InfoOnly) {return} # No NVIDIA present in system
 
 $Commands = [PSCustomObject[]]@(
-    #[PSCustomObject]@{MainAlgorithm = "neoscrypt"; Params = ""; ExtendInterval = 3} #Neoscrypt, CryptoDredge faster
+    #[PSCustomObject]@{MainAlgorithm = "bitcoin"; Params = ""; ExtendInterval = 2} #SHA256
+    [PSCustomObject]@{MainAlgorithm = "myr-gr"; Params = ""; ExtendInterval = 2} #MyriadGroestl
+    [PSCustomObject]@{MainAlgorithm = "neoscrypt"; Params = ""; ExtendInterval = 3} #Neoscrypt
+    [PSCustomObject]@{MainAlgorithm = "neoscrypt-xaya"; Params = ""; ExtendInterval = 3} #Neoscrypt-Xaya
+    [PSCustomObject]@{MainAlgorithm = "qubit"; Params = ""; ExtendInterval = 2} #Qubit
 )
 
 $Name = Get-Item $MyInvocation.MyCommand.Path | Select-Object -ExpandProperty BaseName
@@ -73,7 +100,7 @@ $Global:DeviceCache.DevicesByTypes.NVIDIA | Select-Object Vendor, Model -Unique 
         $Algorithm_Norm_0 = Get-Algorithm $_.MainAlgorithm
 
 		foreach($Algorithm_Norm in @($Algorithm_Norm_0,"$($Algorithm_Norm_0)-$($Miner_Model)","$($Algorithm_Norm_0)-GPU")) {
-			if ($Pools.$Algorithm_Norm.Host -and $Miner_Device) {
+			if (-not $Pools.$Algorithm_Norm.SSL -and $Pools.$Algorithm_Norm.Host -and $Miner_Device) {
                 if ($First) {
                     $Miner_Port = $Port -f ($Miner_Device | Select-Object -First 1 -ExpandProperty Index)
                     $Miner_Name = (@($Name) + @($Miner_Device.Name | Sort-Object) | Select-Object) -join '-'
@@ -101,6 +128,8 @@ $Global:DeviceCache.DevicesByTypes.NVIDIA | Select-Object Vendor, Model -Unique 
                     PowerDraw      = 0
                     BaseName       = $Name
                     BaseAlgorithm  = $Algorithm_Norm_0
+                    Benchmarked    = $Global:StatsCache."$($Miner_Name)_$($Algorithm_Norm_0)_HashRate".Benchmarked
+                    LogFile        = $Global:StatsCache."$($Miner_Name)_$($Algorithm_Norm_0)_HashRate".LogFile
 				}
 			}
 		}

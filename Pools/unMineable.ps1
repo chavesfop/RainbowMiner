@@ -45,9 +45,10 @@ $Pools_Data = @(
 )
 
 $Pool_Referrals = [PSCustomObject]@{
+    "1INCH" = "fy3x-kyu5"
     AAVE = "41qp-kz9q"
     ADA = "6va0-s40b"
-    ALGO = "mnh2-9i5u"
+    ALGO = "vrl4-jzoe"
     ATOM = "uy7u-k3ji"
     BAND = "d04a-ce0q"
     BAT = "9gwg-r21y"
@@ -56,39 +57,45 @@ $Pool_Referrals = [PSCustomObject]@{
     BTC = "9fh9-4fa8"
     BTG = "ad7b-d4tl"
     BTT = "2tik-a8gp"
+    CAKE = "jvjw-oe6g"
+    CHZ = "s205-1crw"
+    CRO = "w5l8-z507"
     DASH = "ux3r-os4a"
     DGB = "ysw1-6l8f"
     DOGE = "5oln-msuu"
+    ELON = "b30y-6838"
     ENJ = "f2j8-u7yh"
     EOS = "vxnn-bcmf"
     ETC = "rd39-9u37"
     ETH = "61lr-wpcz"
     FUN = "nh4x-spqg"
     GAS = "7sae-7dyj"
+    HOT = "et4j-moy3"
     ICX = "cnsz-7dbi"
     KNC = "isfr-bpog"
     LINK = "8tm5-1sts"
-    LSK = "69ku-jyof"
     LTC = "siif-qx8i"
     MANA = "awsm-eqwi"
+    MATIC = "kn0o-dzfz"
     MTL = "3lyx-b4oo"
     NANO = "1x7t-hiis"
     NEO = "9vwe-a1uc"
     QTUM = "yd6u-nsc6"
     REP = "mn87-e9jl"
-    RSR = "s9v8-1yff"
+    RSR = "j0gb-4x91"
     RVN = "7mkm-dj0t"
     SC = "whhb-qst0"
+    SHIB = "dqak-tlkv"
     SKY = "5j29-3kag"
+    SOL = "44vx-wkp4"
     SUSHI = "vzm5-yhp6"
     TRX = "zxih-o6yi"
     UNI = "klty-w0jc"
-    USDT = "q5p2-f3mz"
+    USDT = "p8pi-sju9"
     VET = "fvcq-tr1n"
-    VIA = "ik6e-brmn"
     WAVES = "k9oe-8z69"
     WBTC = "dsos-mr20"
-    WIN = "2czl-sedo"
+    WIN = "ucgt-hhgl"
     XLM = "mvri-yw11"
     XMR = "b4xt-40za"
     XRP = "1kp2-2sxz"
@@ -116,7 +123,7 @@ $Pools_Data | ForEach-Object {
         if (-not $InfoOnly) {
             $Pool_ProfitRequest = [PSCustomObject]@{}
             try {
-                $Pool_ProfitRequest = Invoke-RestMethodAsync "https://api.unminable.com/v3/calculate/reward" -tag $Name -delay 100 -cycletime 120 -body @{algo=$Pool_RewardAlgo;coin=$Pool_Currency;mh=100}                
+                $Pool_ProfitRequest = Invoke-RestMethodAsync "https://api.unminable.com/v3/calculate/reward" -tag $Name -delay 100 -cycletime 120 -body @{algo=$Pool_RewardAlgo;coin=$Pool_Currency;mh=100}
             } catch {
                 if ($Error.Count){$Error.RemoveAt(0)}
                 Write-Log -Level Warn "Pool profit API ($Name) has failed for coin $($Pool_Currency). "
@@ -132,7 +139,8 @@ $Pools_Data | ForEach-Object {
         }
 
         if ($ok -or $InfoOnly) {
-            $Pool_Wallet = "$($Pool_Currency):$($Wallets.$Pool_Currency).{workername:$Worker}$(if ($Pool_Referrals.$Pool_Currency) {"#$($Pool_Referrals.$Pool_Currency)"})"
+            $Pool_Referal = if ($Params.$Pool_Currency -match "^\w{4}-\w{4}$") {$Params.$Pool_Currency} elseif ($Pool_Referrals.$Pool_Currency) {$Pool_Referrals.$Pool_Currency}
+            $Pool_Wallet = "$($Pool_Currency):$($Wallets.$Pool_Currency).{workername:$Worker}$(if ($Pool_Referal) {"#$($Pool_Referal)"})"
 
             foreach($Pool_Region in $_.region) {
                 [PSCustomObject]@{
@@ -152,7 +160,7 @@ $Pools_Data | ForEach-Object {
                     Region        = $Pool_RegionsTable.$Pool_Region
                     SSL           = $false
                     Updated       = $Stat.Updated
-                    PoolFee       = if ($Pool_Referrals.$Pool_Currency) {0.75} else {1.0}
+                    PoolFee       = if ($Pool_Referal) {0.75} else {1.0}
                     PaysLive      = $true
                     DataWindow    = $DataWindow
 				    ErrorRatio    = $Stat.ErrorRatio
@@ -162,6 +170,7 @@ $Pools_Data | ForEach-Object {
                     PenaltyFactor = 1
                     Disabled      = $false
                     HasMinerExclusions = $false
+                    Price_0       = 0.0
                     Price_Bias    = 0.0
                     Price_Unbias  = 0.0
                     Wallet        = $Pool_Wallet

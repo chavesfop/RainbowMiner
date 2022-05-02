@@ -8,20 +8,20 @@ param(
 if (-not $IsWindows -and -not $IsLinux) {return}
 
 $ManualURI = "https://github.com/nanopool/nanominer/releases"
-$Port = "534{0:d2}"
+$Port = "234{0:d2}"
 $Cuda = "10.0"
 $DevFee = 3.0
-$Version = "3.3.5"
+$Version = "3.6.2"
 
 if ($IsLinux) {
     $Path = ".\Bin\ANY-Nanominer\nanominer"
     $UriCuda = @(
         [PSCustomObject]@{
-            Uri = "https://github.com/RainbowMiner/miner-binaries/releases/download/v3.3.5-nanominer/nanominer-linux-3.3.5-cuda11.tar.gz"
+            Uri = "https://github.com/RainbowMiner/miner-binaries/releases/download/v3.6.2-nanominer/nanominer-linux-3.6.2-cuda11.tar.gz"
             Cuda = "11.1"
         },
         [PSCustomObject]@{
-            Uri = "https://github.com/RainbowMiner/miner-binaries/releases/download/v3.3.5-nanominer/nanominer-linux-3.3.5.tar.gz"
+            Uri = "https://github.com/RainbowMiner/miner-binaries/releases/download/v3.6.2-nanominer/nanominer-linux-3.6.2.tar.gz"
             Cuda = "10.0"
         }
     )
@@ -29,11 +29,11 @@ if ($IsLinux) {
     $Path = ".\Bin\ANY-Nanominer\nanominer.exe"
     $UriCuda = @(
         [PSCustomObject]@{
-            Uri = "https://github.com/RainbowMiner/miner-binaries/releases/download/v3.3.5-nanominer/nanominer-windows-3.3.5-cuda11.zip"
+            Uri = "https://github.com/RainbowMiner/miner-binaries/releases/download/v3.6.2-nanominer/nanominer-windows-3.6.2-cuda11.zip"
             Cuda = "11.1"
         },
         [PSCustomObject]@{
-            Uri = "https://github.com/RainbowMiner/miner-binaries/releases/download/v3.3.5-nanominer/nanominer-windows-3.3.5.zip"
+            Uri = "https://github.com/RainbowMiner/miner-binaries/releases/download/v3.6.2-nanominer/nanominer-windows-3.6.2.zip"
             Cuda = "10.0"
         }
     )
@@ -42,16 +42,18 @@ if ($IsLinux) {
 if (-not $Global:DeviceCache.DevicesByTypes.AMD -and -not $Global:DeviceCache.DevicesByTypes.CPU -and -not $Global:DeviceCache.DevicesByTypes.NVIDIA -and -not $InfoOnly) {return} # No GPU present in system
 
 $Commands = [PSCustomObject[]]@(
-    [PSCustomObject]@{MainAlgorithm = "autolykos";               Params = ""; MinMemGb = 3;  Vendor = @("AMD","NVIDIA"); ExtendInterval = 2; DevFee = 2.5; DualZIL = $true} #Autolycos/Ergo
+    [PSCustomObject]@{MainAlgorithm = "autolykos";               Params = ""; MinMemGb = 2;  Vendor = @("AMD","NVIDIA"); ExtendInterval = 2; DevFee = 2.5; DualZIL = $true} #Autolycos/Ergo
     [PSCustomObject]@{MainAlgorithm = "Cuckaroo30";              Params = ""; MinMemGb = 14; Vendor = @("AMD");          ExtendInterval = 2; DevFee = 5.0} #Cuckaroo30/Cortex
-    [PSCustomObject]@{MainAlgorithm = "Ethash";     DAG = $true; Params = ""; MinMemGb = 3;  Vendor = @("AMD");          ExtendInterval = 2; DevFee = 1.0; DualZIL = $true; ExcludePoolName = "^F2Pool"} #Ethash
-    [PSCustomObject]@{MainAlgorithm = "EthashLowMemory"; DAG = $true; Params = ""; MinMemGb = 2;  Vendor = @("AMD");     ExtendInterval = 2; DevFee = 1.0; Algorithm = "Ethash"; DualZIL = $true; ExcludePoolName = "^F2Pool"} #Ethash for low memory coins
+    [PSCustomObject]@{MainAlgorithm = "Ethash";     DAG = $true; Params = ""; MinMemGb = 3;  Vendor = @("AMD");          ExtendInterval = 2; DevFee = 1.0; DualZIL = $true; ExcludePoolName = "F2Pool"} #Ethash
+    [PSCustomObject]@{MainAlgorithm = "EthashLowMemory"; DAG = $true; Params = ""; MinMemGb = 2;  Vendor = @("AMD");     ExtendInterval = 2; DevFee = 1.0; Algorithm = "Ethash"; DualZIL = $true; ExcludePoolName = "F2Pool"} #Ethash for low memory coins
     [PSCustomObject]@{MainAlgorithm = "EtcHash";    DAG = $true; Params = ""; MinMemGb = 3;  Vendor = @("AMD");          ExtendInterval = 2; DevFee = 1.0; DualZIL = $true} #EtcHash
+    [PSCustomObject]@{MainAlgorithm = "FiroPow";    DAG = $true; Params = ""; MinMemGb = 2;  Vendor = @("AMD","NVIDIA"); ExtendInterval = 2; DevFee = 1.0; DualZIL = $true; ZombieMode = $true} #FiroPOW
     [PSCustomObject]@{MainAlgorithm = "KawPow";     DAG = $true; Params = ""; MinMemGb = 3;  Vendor = @("AMD","NVIDIA"); ExtendInterval = 2; DevFee = 2.0; DualZIL = $true} #KawPOW
     [PSCustomObject]@{MainAlgorithm = "Octopus";    DAG = $true; Params = ""; MinMemGb = 5;  Vendor = @("NVIDIA");       ExtendInterval = 2; DevFee = 2.0; DualZIL = $true} #Octopus/Conflux
     [PSCustomObject]@{MainAlgorithm = "RandomX";                 Params = ""; MinMemGb = 3;  Vendor = @("CPU");          ExtendInterval = 2; DevFee = 2.0} #RandomX
     [PSCustomObject]@{MainAlgorithm = "Verushash";               Params = ""; MinMemGb = 3;  Vendor = @("CPU");          ExtendInterval = 2; DevFee = 2.0; CPUFeatures = @("avx","aes")} #Verushash
-    [PSCustomObject]@{MainAlgorithm = "UbqHash";                 Params = ""; MinMemGb = 3;  Vendor = @("AMD","NVIDIA"); ExtendInterval = 2; DevFee = 1.0; Algorithm = "Ethash"; Coins = @("UBQ"); ExcludePoolName = "^F2Pool"} #UbqHash
+    [PSCustomObject]@{MainAlgorithm = "UbqHash";                 Params = ""; MinMemGb = 3;  Vendor = @("AMD","NVIDIA"); ExtendInterval = 2; DevFee = 1.0; Algorithm = "Ethash"; Coins = @("UBQ"); ExcludePoolName = "F2Pool"} #UbqHash
+    #[PSCustomObject]@{MainAlgorithm = "Verthash";                Params = ""; MinMemGb = 2;  Vendor = @("AMD");          ExtendInterval = 2; DevFee = 1.0} #Verthash
 )
 
 $Name = Get-Item $MyInvocation.MyCommand.Path | Select-Object -ExpandProperty BaseName
@@ -89,14 +91,9 @@ foreach ($Miner_Vendor in @("AMD","CPU","NVIDIA")) {
         $Miner_Model = $_.Model
         $Device = $Global:DeviceCache.DevicesByTypes.$Miner_Vendor.Where({$_.Model -eq $Miner_Model})
 
-        $Commands.Where({$_.Vendor -icontains $Miner_Vendor -and (-not $_.CPUFeatures -or ($Global:GlobalCPUInfo.Features -and -not (Compare-Object @($Global:GlobalCPUInfo.Features.Keys) $_.CPUFeatures | Where-Object SideIndicator -eq "=>" | Measure-Object).Count))}).ForEach({
+        $Commands.Where({$_.Vendor -icontains $Miner_Vendor -and ($Miner_Vendor -ne "CPU" -or -not $_.CPUFeatures -or ($Global:GlobalCPUInfo.Features -and -not (Compare-Object @($Global:GlobalCPUInfo.Features.Keys) $_.CPUFeatures | Where-Object SideIndicator -eq "=>" | Measure-Object).Count))}).ForEach({
             $First = $true
             $Algorithm_Norm_0 = if ($_.Algorithm) {Get-Algorithm $_.Algorithm} else {Get-Algorithm $_.MainAlgorithm}
-
-            if ($_.DualZIL -and $Pools.ZilliqaETH) {
-                $ZilWallet = $Pools.ZilliqaETH.Wallet
-                $ZilPool   = "$($Pools.ZilliqaETH.Host):$($Pools.ZilliqaETH.Port)"
-            }
 
             if ($Miner_Vendor -eq "CPU") {
                 $CPUThreads = if ($Session.Config.Miners."$Name-CPU-$Algorithm_Norm_0".Threads)  {$Session.Config.Miners."$Name-CPU-$Algorithm_Norm_0".Threads}  elseif ($Session.Config.Miners."$Name-CPU".Threads)  {$Session.Config.Miners."$Name-CPU".Threads}  elseif ($Session.Config.CPUMiningThreads)  {$Session.Config.CPUMiningThreads}
@@ -105,16 +102,27 @@ foreach ($Miner_Vendor in @("AMD","CPU","NVIDIA")) {
 
             $MinMemGB = if ($_.DAG) {Get-EthDAGSize -CoinSymbol $Pools.$Algorithm_Norm_0.CoinSymbol -Algorithm $Algorithm_Norm_0 -Minimum $_.MinMemGb} else {$_.MinMemGb}
 
-            $Miner_Device = $Device | Where-Object {$Miner_Vendor -eq "CPU" -or (($Algorithm_Norm_0 -ne "Cuckaroo30" -or $_.Model -eq "RX57016GB") -and (Test-VRAM $_ $MinMemGb))}
+            if ($_.ZombieMode -and -not $_.NoMemCalcCheck -and $MinMemGB -gt $_.MinMemGB -and $Session.Config.EnableEthashZombieMode) {
+                $MinMemGB = $_.MinMemGB
+            }
+
+            $Miner_Device = $Device | Where-Object {$Miner_Vendor -eq "CPU" -or (($Algorithm_Norm_0 -ne "Cuckaroo30" -or $_.Model -eq "RX57016GB") -and ($Miner_Vendor -ne "NVIDIA" -or $Cuda -match "^11" -or $_.Model -notmatch "^RTX30") -and (Test-VRAM $_ $MinMemGb))}
 
             $All_Algorithms = if ($Miner_Vendor -eq "CPU") {@($Algorithm_Norm_0,"$($Algorithm_Norm_0)-$($Miner_Model)")} else {@($Algorithm_Norm_0,"$($Algorithm_Norm_0)-$($Miner_Model)","$($Algorithm_Norm_0)-GPU")}
 
 		    foreach($Algorithm_Norm in $All_Algorithms) {
-			    if ($Pools.$Algorithm_Norm.Host -and $Miner_Device -and (-not $_.ExcludePoolName -or $Pools.$Algorithm_Norm.Name -notmatch $_.ExcludePoolName) -and (-not $_.Coins -or ($Pools.$Algorithm_Norm.CoinSymbol -and $_.Coins -icontains $Pools.$Algorithm_Norm.CoinSymbol))) {
+			    if ($Pools.$Algorithm_Norm.Host -and $Miner_Device -and (-not $_.ExcludePoolName -or $Pools.$Algorithm_Norm.Host -notmatch $_.ExcludePoolName) -and (-not $_.Coins -or ($Pools.$Algorithm_Norm.CoinSymbol -and $_.Coins -icontains $Pools.$Algorithm_Norm.CoinSymbol)) -and (-not $Pools.$Algorithm_Norm.SSL -or -not $Pools.$Algorithm_Norm.SSLSelfSigned)) {
                     if ($First) {
                         $Miner_Port = $Port -f ($Miner_Device | Select-Object -First 1 -ExpandProperty Index)
                         $Miner_Name = (@($Name) + @($Miner_Device.Name | Sort-Object) | Select-Object) -join '-'
                         $First = $false
+                        if ($Session.Config.Pools.Ezil.EnableNanominerDual -and $_.DualZIL -and $Pools.ZilliqaETH -and $Pools.ZilliqaETH.EthMode -eq $Pools.$Algorithm_Norm.EthMode) {
+                            $ZilWallet = $Pools.ZilliqaETH.Wallet
+                            $ZilPool   = "$($Pools.ZilliqaETH.Host):$($Pools.ZilliqaETH.Port)"
+                        } else {
+                            $ZilWallet = ""
+                            $ZilPool   = ""
+                        }
                     }
 					$Pool_Port = if ($Miner_Vendor -ne "CPU" -and $Pools.$Algorithm_Norm.Ports -ne $null -and $Pools.$Algorithm_Norm.Ports.GPU) {$Pools.$Algorithm_Norm.Ports.GPU} else {$Pools.$Algorithm_Norm.Port}
                     $Wallet    = if ($Pools.$Algorithm_Norm.Wallet) {$Pools.$Algorithm_Norm.Wallet} else {$Pools.$Algorithm_Norm.User}
@@ -129,10 +137,10 @@ foreach ($Miner_Vendor in @("AMD","CPU","NVIDIA")) {
                     }
                     
 				    $Arguments = [PSCustomObject]@{
-                        Algo      = $_.MainAlgorithm
+                        Algo      = if ($_.Algorithm) {$_.Algorithm} else {$_.MainAlgorithm}
                         Coin      = $Pools.$Algorithm_Norm.CoinSymbol
 					    Host      = $Pools.$Algorithm_Norm.Host
-					    Port      = $Pools.$Algorithm_Norm.Port
+					    Port      = $Pool_Port
 					    SSL       = $Pools.$Algorithm_Norm.SSL
 					    Wallet    = $Wallet
                         ZilWallet = $ZilWallet
@@ -143,6 +151,7 @@ foreach ($Miner_Vendor in @("AMD","CPU","NVIDIA")) {
                         Email     = $Pools.$Algorithm_Norm.Email
                         Threads   = if ($Miner_Vendor -eq "CPU") {$CPUThreads} else {$null}
                         Devices   = if ($Miner_Vendor -ne "CPU") {$Miner_Device.BusId_Type_Mineable_Index} else {$null}
+                        LHR       = "$(if ($Miner_Vendor -eq "NVIDIA" -and $Algorithm_Norm -match "^Etc?hash") {($Miner_Device | Foreach-Object {if ($_.IsLHR) {"0"} else {"off"}}) -join ','})"
 				    }
 
 				    [PSCustomObject]@{
@@ -165,7 +174,10 @@ foreach ($Miner_Vendor in @("AMD","CPU","NVIDIA")) {
                         PowerDraw      = 0
                         BaseName       = $Name
                         BaseAlgorithm  = $Algorithm_Norm_0
+                        Benchmarked    = $Global:StatsCache."$($Miner_Name)_$($Algorithm_Norm_0)_HashRate".Benchmarked
+                        LogFile        = $Global:StatsCache."$($Miner_Name)_$($Algorithm_Norm_0)_HashRate".LogFile
                         #ListDevices    = "-d"
+                        ExcludePoolName = $_.ExcludePoolName
 				    }
 			    }
 		    }

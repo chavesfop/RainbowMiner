@@ -7,7 +7,7 @@ param(
 
 if (-not $IsWindows -and -not $IsLinux) {return}
 
-$Version = "1.3.13"
+$Version = "1.3.14"
 $ManualUri = "https://github.com/no-fee-ethereum-mining/nsfminer/releases"
 $Port = "300{0:d2}"
 $DevFee = 0.0
@@ -17,16 +17,26 @@ if ($IsLinux) {
     $Path = ".\Bin\Ethash-Nsfminer\nsfminer"
     $UriCuda = @(
         [PSCustomObject]@{
+            Uri = "https://github.com/RainbowMiner/miner-binaries/releases/download/v1.3.14-nsfminer/nsfminer_1.3.14-ubuntu_18.04-cuda_11.3-opencl.tgz"
+            Cuda = "11.3"
+        }
+        [PSCustomObject]@{
             Uri = "https://github.com/RainbowMiner/miner-binaries/releases/download/v1.3.13-nsfminer/nsfminer_1.3.13-ubuntu_18.04-cuda_11.2-opencl.tgz"
             Cuda = "11.2"
+            Version = "1.3.13"
         }
     )
 } else {
     $Path = ".\Bin\Ethash-Nsfminer\nsfminer.exe"
     $UriCuda = @(
         [PSCustomObject]@{
+            Uri = "https://github.com/RainbowMiner/miner-binaries/releases/download/v1.3.14-nsfminer/nsfminer_1.3.14-windows_10-cuda_11.3-opencl.zip"
+            Cuda = "11.3"
+        }
+        [PSCustomObject]@{
             Uri = "https://github.com/RainbowMiner/miner-binaries/releases/download/v1.3.13-nsfminer/nsfminer_1.3.13-windows_10-cuda_11.2-opencl.zip"
             Cuda = "11.2"
+            Version = "1.3.13"
         }
     )
 }
@@ -60,6 +70,9 @@ if ($Session.Config.CUDAVersion) {
         if (Confirm-Cuda -ActualVersion $Session.Config.CUDAVersion -RequiredVersion $UriCuda[$i].Cuda -Warning $(if (($i -lt $UriCuda.Count-1) -or -not $Global:DeviceCache.DevicesByTypes.NVIDIA) {""}else{$Name})) {
             $Uri  = $UriCuda[$i].Uri
             $Cuda = $UriCuda[$i].Cuda
+            if ($UriCuda[$i].Version) {
+                $Version = $UriCuda[$i].Version
+            }
         }
     }
 }
@@ -107,7 +120,7 @@ foreach ($Miner_Vendor in @("AMD","NVIDIA")) {
 						default            {"stratum$(if ($Pools.$Algorithm_Norm.SSL) {"s"})";$Miner_Protocol_Auto = $true}
 					}
 
-                    if ($Pools.$Algorithm_Norm.Name -eq "F2pool" -and $Pools.$Algorithm_Norm.User -match "^0x[0-9a-f]{40}") {$Pool_Port = 8008}
+                    if ($Pools.$Algorithm_Norm.Host -match "F2pool" -and $Pools.$Algorithm_Norm.User -match "^0x[0-9a-f]{40}") {$Pool_Port = 8008}
 
 					[PSCustomObject]@{
 						Name           = $Miner_Name
@@ -129,6 +142,8 @@ foreach ($Miner_Vendor in @("AMD","NVIDIA")) {
                         PowerDraw      = 0
                         BaseName       = $Name
                         BaseAlgorithm  = $Algorithm_Norm_0
+                        Benchmarked    = $Global:StatsCache."$($Miner_Name)_$($Algorithm_Norm_0)_HashRate".Benchmarked
+                        LogFile        = $Global:StatsCache."$($Miner_Name)_$($Algorithm_Norm_0)_HashRate".LogFile
 					}
 				}
 			}

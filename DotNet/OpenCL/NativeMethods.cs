@@ -5,11 +5,11 @@
 //  Copyright (c) 2016 Markus Uhr. All rights reserved.
 //
 
+using System;
+using System.Runtime.InteropServices;
+
 namespace OpenCl
 {
-    using System;
-    using System.Runtime.InteropServices;
-
     internal class NativeMethods
     {
         private NativeMethods()
@@ -413,5 +413,6 @@ namespace OpenCl
 
         [DllImport("OpenCL")]
         internal static extern IntPtr clGetExtensionFunctionAddressForPlatform(IntPtr platform, string name);
+
     }
 }

@@ -53,7 +53,7 @@ if ($PoolCoins_Request) {
     if ($PoolCoins_Algorithms.Count) {foreach($p in $PoolCoins_Request.PSObject.Properties.Name) {if ($PoolCoins_Algorithms -contains $PoolCoins_Request.$p.algo) {$Pool_Coins[$PoolCoins_Request.$p.algo] = [hashtable]@{Name = $PoolCoins_Request.$p.name; Symbol = $p -replace '-.+$'}}}}
 }
 
-$Pool_Request | Get-Member -MemberType NoteProperty -ErrorAction Ignore | Select-Object -ExpandProperty Name | ForEach-Object {
+$Pool_Request.PSObject.Properties.Name | Where-Object {$_ -ne "x25x"} | ForEach-Object {
     $Pool_Host = "blockmasters.co"
     $Pool_Port = $Pool_Request.$_.port
     $Pool_Algorithm = $Pool_Request.$_.name
@@ -63,7 +63,7 @@ $Pool_Request | Get-Member -MemberType NoteProperty -ErrorAction Ignore | Select
     $Pool_Symbol = $Pool_Coins.$Pool_Algorithm.Symbol
     $Pool_PoolFee = [double]$Pool_Request.$_.fees
     if ($Pool_Coin -and -not $Pool_Symbol) {$Pool_Symbol = Get-CoinSymbol $Pool_Coin}
-    $Pool_EthProxy = if ($Pool_Algorithm_Norm -match $Global:RegexAlgoHasEthproxy) {"minerproxy"} elseif ($Pool_Algorithm_Norm -eq "KawPOW") {"stratum"} else {$null}
+    $Pool_EthProxy = if ($Pool_Algorithm_Norm -match $Global:RegexAlgoHasEthproxy) {"minerproxy"} elseif ($Pool_Algorithm_Norm -match $Global:RegexAlgoIsProgPow) {"stratum"} else {$null}
 
     $Pool_Factor = [Double]$Pool_Request.$_.mbtc_mh_factor
     if ($Pool_Factor -le 0) {
@@ -117,6 +117,7 @@ $Pool_Request | Get-Member -MemberType NoteProperty -ErrorAction Ignore | Select
                 PenaltyFactor = 1
                 Disabled      = $false
                 HasMinerExclusions = $false
+                Price_0       = 0.0
                 Price_Bias    = 0.0
                 Price_Unbias  = 0.0
                 Wallet        = $Wallets.$Pool_Currency

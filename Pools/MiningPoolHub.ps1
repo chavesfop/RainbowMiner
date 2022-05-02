@@ -44,31 +44,30 @@ $Pool_Fee = 0.9 + 0.2
 
 $Pool_Currency = if ($AEcurrency) {$AEcurrency} else {"BTC"}
 
-#temp. fix VTC on port 17032 doesn't work 2021/02/06
-$Pool_Request.return | Where-Object {$_.algo -and $_.current_mining_coin_symbol -and ($_.current_mining_coin_symbol -ne "VTC")} | ForEach-Object {
+$Pool_Request.return | Where-Object {$_.algo -and $_.current_mining_coin_symbol} | ForEach-Object {
     $Pool_Hosts     = $_.all_host_list.split(";")
-    $Pool_Port      = $_.algo_switch_port
+    $Pool_Port      = if ($_.current_mining_coin_symbol -eq "VTC") {20534} else {$_.algo_switch_port} #temp. fix VTC on port 17032 doesn't work 2021/02/06
     $Pool_CoinSymbol= $_.current_mining_coin_symbol
 
-    $Pool_Coin      = Get-Coin "$($Pool_CoinSymbol)$(if ($_.current_mining_coin -match '-') {"-$($_.algo)"})"
+    $Pool_Algorithm = $_.algo
+    if (-not $Pool_Algorithms.ContainsKey($Pool_Algorithm)) {$Pool_Algorithms.$Pool_Algorithm = Get-Algorithm $Pool_Algorithm}
+
+    $Pool_Coin      = Get-Coin $Pool_CoinSymbol -Algorithm $Pool_Algorithms.$Pool_Algorithm
     if ($Pool_Coin) {
         $Pool_Algorithm = $Pool_Coin.algo
         $Pool_CoinName  = $Pool_Coin.name
+        if (-not $Pool_Algorithms.ContainsKey($Pool_Algorithm)) {$Pool_Algorithms.$Pool_Algorithm = Get-Algorithm $Pool_Algorithm}
     } else {
-        $Pool_Algorithm = $_.algo
         $Pool_CoinName  = (Get-Culture).TextInfo.ToTitleCase($_.coin_name -replace "-.+$")
     }
 
-    if (-not $Pool_Algorithms.ContainsKey($Pool_Algorithm)) {$Pool_Algorithms.$Pool_Algorithm = Get-Algorithm $Pool_Algorithm}
     $Pool_Algorithm_Norm = $Pool_Algorithms.$Pool_Algorithm
 
     if ($Pool_Algorithm_Norm -eq "Sia") {$Pool_Algorithm_Norm = "SiaClaymore"} #temp fix
 
-    $Pool_EthProxy = if ($Pool_Algorithm_Norm -match $Global:RegexAlgoHasEthproxy) {"ethstratumnh"} elseif ($Pool_Algorithm_Norm -eq "KawPOW") {"stratum"} else {$null}
+    $Pool_EthProxy = if ($Pool_Algorithm_Norm -match $Global:RegexAlgoHasEthproxy) {"ethstratumnh"} elseif ($Pool_Algorithm_Norm -match $Global:RegexAlgoIsProgPow) {"stratum"} else {$null}
 
     $Divisor = 1e9
-
-    if ($Pool_CoinSymbol -eq "ZCL") {$Divisor *= 12.5/0.78} #temp fix "tripple halving of ZCL"
 
     if (-not $InfoOnly) {
         $Stat = Set-Stat -Name "$($Name)_$($Pool_Algorithm_Norm)_Profit" -Value ([Double]$_.profit / $Divisor) -Duration $StatSpan -ChangeDetection $false -FaultDetection $true -FaultTolerance 5 -Quiet
@@ -100,9 +99,10 @@ $Pool_Request.return | Where-Object {$_.algo -and $_.current_mining_coin_symbol 
                 PenaltyFactor = 1
                 Disabled      = $false
                 HasMinerExclusions = $false
+                Price_0       = 0.0
                 Price_Bias    = 0.0
                 Price_Unbias  = 0.0
-                Wallet        = $Wallets.$Pool_Currency
+                Wallet        = ""
                 Worker        = "{workername:$Worker}"
                 Email         = $Email
             }

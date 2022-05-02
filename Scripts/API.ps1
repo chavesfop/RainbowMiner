@@ -2,7 +2,7 @@
 
 Set-Location $CurrentPwd
 
-if ($API.Debug -and -not $psISE -and $Session.LogLevel -ne "Silent") {Start-Transcript ".\Logs\API_$(Get-Date -Format "yyyy-MM-dd_HH-mm-ss").txt"}
+if ($API.Debug -and -not $psISE -and $Session.LogLevel -ne "Silent") {Start-Transcript ".\Logs\API$($ThreadID)_$(Get-Date -Format "yyyy-MM-dd_HH-mm-ss").txt"}
 
 $ProgressPreference = "SilentlyContinue"
 
@@ -45,7 +45,7 @@ While ($APIHttpListener.IsListening -and -not $API.Stop) {
     $Path = $Request.Url.LocalPath
 
     if ($API.Debug) {
-        Write-ToFile -FilePath "Logs\requests_$(Get-Date -Format "yyyy-MM-dd").api.txt" -Message "$Path $($Parameters | ConvertTo-Json -Depth 10 -Compress)" -Append -Timestamp
+        Write-ToFile -FilePath "Logs\requests$($ThreadID)_$(Get-Date -Format "yyyy-MM-dd").api.txt" -Message "$Path $($Parameters | ConvertTo-Json -Depth 10 -Compress)" -Append -Timestamp
     }
 
     # Create the defaults for associated settings
@@ -54,8 +54,51 @@ While ($APIHttpListener.IsListening -and -not $API.Stop) {
     $ContentFileName = ""
 
     if ($Path -match $API.RandTag) {$Path = "/stop";$API.APIauth = $false}
-            
-    if($API.RemoteAPI -and $API.APIauth -and (-not $Context.User.Identity.IsAuthenticated -or $Context.User.Identity.Name -ne $API.APIuser -or $Context.User.Identity.Password -ne $API.APIpassword)) {
+
+    $IsAuth = $true
+
+    $RemoteIP   = "$($Request.RemoteEndPoint)" -replace ":\d+$" -replace "^\[.+\]$"
+    $RemoteAuth = $API.RemoteAPI -and $API.APIauth
+    
+    if ($RemoteAuth -or $API.AllowIPs) {
+    
+        $IsAuth = (-not $RemoteAuth -or ($Context.User.Identity.IsAuthenticated -and $Context.User.Identity.Name -eq $API.APIuser -and $Context.User.Identity.Password -eq $API.APIpassword)) -and (-not $API.AllowIPs -or $RemoteIP -eq "" -or ($API.AllowIPs | Where-Object {$RemoteIP -like $_} | Measure-Object).Count)
+
+        if ($API.MaxLoginAttempts -gt 0 -and $RemoteIP -ne "") {
+
+            $AuthNow = (Get-Date).ToUniversalTime()
+
+            if ($IsAuth) {
+                if ($APIAccessDB.ContainsKey($RemoteIP)) {
+                    if ($APIAccessDB[$RemoteIP].BlockedUntil -ne $null -and ($APIAccessDB[$RemoteIP].BlockedUntil -ge $AuthNow)) {
+                        $IsAuth = $false
+                    } else {
+                        $APIAccessDB.Remove($RemoteIP)
+                    }
+                }
+            } else {
+                if (-not $APIAccessDB.ContainsKey($RemoteIP)) {
+                    $APIAccessDB[$RemoteIP] = [PSCustomObject]@{
+                        FailedCount  = 0
+                        LastFailed   = $null
+                        BlockedUntil = $null
+                    }
+                } elseif ($APIAccessDB[$RemoteIP].LastFailed -ne $null -and ($APIAccessDB[$RemoteIP].LastFailed -lt $AuthNow.AddSeconds(-$API.BlockLoginAttemptsTime))) {
+                    $APIAccessDB[$RemoteIP].FailedCount = 0
+                    $APIAccessDB[$RemoteIP].BlockedUntil = $null
+                }
+
+                $APIAccessDB[$RemoteIP].FailedCount++
+                $APIAccessDB[$RemoteIP].LastFailed = $AuthNow
+
+                if ($APIAccessDB[$RemoteIP].FailedCount -gt $API.MaxLoginAttempts) {
+                    $APIAccessDB[$RemoteIP].BlockedUntil = $AuthNow.AddSeconds($API.BlockLoginAttemptsTime)
+                }
+            }
+        }
+    }
+
+    if(-not $IsAuth) {
         $Data        = "Access denied"
         $StatusCode  = [System.Net.HttpStatusCode]::Unauthorized
         $ContentType = "text/html"
@@ -70,6 +113,10 @@ While ($APIHttpListener.IsListening -and -not $API.Stop) {
             $Data = $API.Info
             break
         }
+        "/remoteip" {
+            $Data = if ($API.RemoteIP) {ConvertTo-Json $API.RemoteIP -ErrorAction Ignore -Depth 10} else {$null}
+            break
+        }
         "/console" {
             $CountLines = 0
             $ConsoleTimestamp = [int]$(if (Test-Path ".\Logs\console.txt") {Get-UnixTimestamp (Get-Item ".\Logs\console.txt" -ErrorAction Ignore).LastWriteTime} else {0})
@@ -80,7 +127,7 @@ While ($APIHttpListener.IsListening -and -not $API.Stop) {
                     $CountLines -eq 2 -and $_ -notmatch "console.txt"
                 }
             } | Foreach-Object {
-                $_ -replace "$([char]27)\[\d+m"
+                $_ -replace "\x1B\[[;\d]+m"
             }))} else {'*'}
 
             $CurrentMiners = @()
@@ -88,7 +135,7 @@ While ($APIHttpListener.IsListening -and -not $API.Stop) {
                 $CurrentMiners = @($API.RunningMiners | Where-Object {$_.LogFile -and (Test-Path $_.LogFile)} | Sort-Object -Property Name | Foreach-Object {
                     [PSCustomObject]@{
                         Name = "$($_.DeviceModel) $($_.BaseName)"
-                        Content = [String]::Join("`n",@(Get-Content $_.LogFile -Tail 20 -ErrorAction Ignore | Foreach-Object {$_ -replace "$([char]27)\[\d+m"}))
+                        Content = [String]::Join("`n",@(Get-Content $_.LogFile -Tail 20 -ErrorAction Ignore | Foreach-Object {$_ -replace "\x1B\[[;\d]+m"}))
                     }
                 })
             }
@@ -162,12 +209,20 @@ While ($APIHttpListener.IsListening -and -not $API.Stop) {
             $Data = if ($API.MinerInfo) {ConvertTo-Json $API.MinerInfo -Depth 10} else {"{}"}
             Break
         }
+        "/minerspeeds" {
+            $Data = if ($API.MinerSpeeds) {ConvertTo-Json $API.MinerSpeeds -Depth 10} else {"{}"}
+            Break
+        }
         "/pools" {
             $Data = if ($API.Pools) {ConvertTo-Json $API.Pools -Depth 10} else {"[]"}
             Break
         }
         "/allpools" {
             $Data = if ($API.AllPools) {ConvertTo-Json $API.AllPools -Depth 10} else {"[]"}
+            Break
+        }
+        "/newpools" {
+            $Data = if ($API.NewPools) {ConvertTo-Json $API.NewPools -Depth 10} else {"[]"}
             Break
         }
         "/algorithms" {
@@ -182,24 +237,90 @@ While ($APIHttpListener.IsListening -and -not $API.Stop) {
             $Data = if ($API.FastestMiners) {ConvertTo-Json $API.FastestMiners -Depth 10} else {"[]"}
             Break
         }
+        "/availminers" {
+            $Data = if ($Session.AvailMiners) {ConvertTo-Json $Session.AvailMiners -Depth 10} else {"[]"}
+        }
+        "/availminerstats" {
+            $Data = if ($Session.AvailMiners) {
+                ConvertTo-Json @($Session.AvailMiners | Foreach-Object {
+                    [PSCustomObject]@{
+                        Name = $_
+                        Statcount = (Get-ChildItem ".\Stats\Miners" -File -Filter "*-$($_)-*_Hashrate.txt" | Measure-Object).Count
+                    }
+                }) -Depth 10
+            } else {"[]"}
+        }
         "/disabled" {
             $Data = ConvertTo-Json @((Get-Stat -Disabled).Keys | Select-Object) -Depth 10
             Break
         }
         "/getwtmurls" {
             $WTMdata = Get-WhatToMineData
-            $WTMdata_algos = @($WTMdata | Where-Object {$_.id} | Select-Object -ExpandProperty algo)
+            $WTMdata_algos = @($WTMdata | Where-Object {$_.id} | Foreach-Object {if ($_.algo -eq "ProgPow") {"ProgPowZ","ProgPowSero"} else {$_.algo}} | Select-Object)
             $WTMdata_result = [hashtable]@{}
             if ($API.Rates) {$LocalRates = ConvertFrom-Json $API.Rates}
             $API.FastestMiners | Where-Object {$_.BaseAlgorithm -notmatch '-' -and $WTMdata_algos -icontains $_.BaseAlgorithm} | Group-Object -Property DeviceModel | Foreach-Object {
                 $Group = $_.Group
-                $WTMdata_result[$_.Name] = "https://whattomine.com/coins?$(@($WTMdata | Where-Object {$_.id} | Foreach-Object {$Algo = $_.algo;if (($One = $Group | Where-Object {$_.BaseAlgorithm -eq $Algo} | Select-Object -First 1) -and $One.HashRates.$Algo -gt 0) {"$($_.id)=true&factor[$($_.id)_hr]=$([Math]::Round($One.HashRates.$Algo/$_.factor,3))&factor[$($_.id)_p]=$([int]$One.PowerDraw)"} else {"$($_.id)=false&factor[$($_.id)_hr]=$(if ($_.id -eq "eth") {"0.000001"} else {"0"})&factor[$($_.id)_p]=0"}}) -join '&')&factor[cost]=$(if ($Session.Config.UsePowerPrice) {[Math]::Round($API.CurrentPowerPrice*$(if ($Session.Config.PowerPriceCurrency -ne "USD" -and $LocalRates."$($Session.Config.PowerPriceCurrency)") {$LocalRates.USD/$LocalRates."$($Session.Config.PowerPriceCurrency)"} else {1}),4)} else {0})&sort=Profitability24&volume=0&revenue=24h&dataset=$($Session.Config.WorkerName)&commit=Calculate"
+                $WTMdata_result[$_.Name] = "https://whattomine.com/coins?$(@($WTMdata | Where-Object {$_.id} | Foreach-Object {$Algo = @(if ($_.algo -eq "ProgPow") {"ProgPowZ","ProgPowSero"} else {$_.algo});if (($One = $Group | Where-Object {$_.BaseAlgorithm -in $Algo} | Select-Object -First 1) -and (($OneHR = if ($One.HashRates."$($One.BaseAlgorithm)") {$One.HashRates."$($One.BaseAlgorithm)"} elseif ($One.HashRates."$($One.BaseAlgorithm)-$($One.DeviceModel)") {$One.HashRates."$($One.BaseAlgorithm)-$($One.DeviceModel)"} else {$One.HashRates."$($One.BaseAlgorithm)-GPU"}) -gt 0)) {"$($_.id)=true&factor[$($_.id)_hr]=$([Math]::Round($OneHR/$_.factor,3))&factor[$($_.id)_p]=$([int]$One.PowerDraw)"} else {"$($_.id)=false&factor[$($_.id)_hr]=$(if ($_.id -eq "eth") {"0.000001"} else {"0"})&factor[$($_.id)_p]=0"}}) -join '&')&factor[cost]=$(if ($Session.Config.UsePowerPrice) {[Math]::Round($API.CurrentPowerPrice*$(if ($Session.Config.PowerPriceCurrency -ne "USD" -and $LocalRates."$($Session.Config.PowerPriceCurrency)") {$LocalRates.USD/$LocalRates."$($Session.Config.PowerPriceCurrency)"} else {1}),4)} else {0})&sort=Profitability24&volume=0&revenue=24h&dataset=$($Session.Config.WorkerName)&commit=Calculate"
             }
             $Data = ConvertTo-Json $WTMdata_result -Depth 10
             Remove-Variable "WTMdata"
             Remove-Variable "WTMdata_algos"
             Remove-Variable "WTMdata_result"
             if ($LocalRates -ne $null) {Remove-Variable "LocalRates"}
+            Break
+        }
+        "/loadconfigjson" {
+            $ConfigName = if ($Parameters.ConfigName) {$Parameters.ConfigName} else {"Config"}
+
+            $ConfigActual = Get-ConfigContent $ConfigName
+
+            $Success = $false
+            $Data = $null
+            if ($Session.ConfigFiles[$ConfigName].Healthy -and (Test-Path $Session.ConfigFiles[$ConfigName].Path)) {
+                try {
+                    $Data = Get-ContentByStreamReader $Session.ConfigFiles[$ConfigName].Path -ThrowError
+                    $Success = $true
+                } catch {
+                    if ($Error.Count){$Error.RemoveAt(0)}
+                    Write-ToFile -FilePath "Logs\errors_$(Get-Date -Format "yyyy-MM-dd").api.txt" -Message "[$ThreadID] Error reading config file $($Session.ConfigFiles[$ConfigName].Path): $($_.Exception.Message)" -Append -Timestamp
+                }
+            }
+
+            if ($Success -and $Data) {
+                $Data = ConvertTo-Json ([PSCustomObject]@{Success=$true;Data=$Data}) -Depth 10
+            } else {
+                $Data = ConvertTo-Json ([PSCustomObject]@{Success=$false}) -Depth 10
+            }
+
+            if ($ConfigActual -ne $null) {Remove-Variable "ConfigActual"}
+            Break
+        }
+        "/saveconfigjson" {
+            if ($API.LockConfig) {
+                $Data = ConvertTo-Json ([PSCustomObject]@{Success=$false}) -Depth 10
+                Break;
+            }
+
+            $ConfigName = if ($Parameters.ConfigName) {$Parameters.ConfigName} else {"Config"}
+
+            $Success = $false
+            if ("$($Parameters.Data)" -ne "") {
+                try {
+                    $Data = $Parameters.Data | ConvertFrom-Json -ErrorAction Stop
+                    $ConfigActual = Get-ConfigContent $ConfigName
+                    $ChangeTag = Get-ContentDataMD5hash($ConfigActual)
+                    $Success = Set-ContentJson -PathToFile $Session.ConfigFiles[$ConfigName].Path -Data $Data -MD5hash $ChangeTag
+                } catch {
+                    if ($Error.Count){$Error.RemoveAt(0)}
+                    Write-ToFile -FilePath "Logs\errors_$(Get-Date -Format "yyyy-MM-dd").api.txt" -Message "[$ThreadID] Error writing config file $($Session.ConfigFiles[$ConfigName].Path): $($_.Exception.Message)" -Append -Timestamp
+                }
+                if ($ConfigActual -ne $null) {Remove-Variable "ConfigActual"}
+                if ($ChangeTag -ne $null) {Remove-Variable "ChangeTag"}
+            }
+
+            $Data = ConvertTo-Json ([PSCustomObject]@{Success=$Success}) -Depth 10
+
             Break
         }
         "/loadconfig" {
@@ -237,37 +358,53 @@ While ($APIHttpListener.IsListening -and -not $API.Stop) {
                                     Difficulty         = $_.Difficulty
                                     Penalty            = $_.Penalty
                                     Disable            = $_.Disable
+                                    Tuning             = $_.Tuning
                                 }
                             }
                         }) -Depth 10 -Compress
                     } elseif ($ConfigName -eq "Pools") {
+                        $ConfigActual.PSObject.Properties.Value | Foreach-Object {
+                            if ($_.PSObject.Properties.Match("MaxAllowedLuck").Count) {
+                                if ($_.MaxAllowedLuck) {
+                                    $_.MaxAllowedLuck = "$($_.MaxAllowedLuck * 100)"
+                                }
+                            } else {
+                                $_ | Add-Member MaxAllowedLuck "" -Force
+                            }
+                        }
                         $PoolSetup = Get-ChildItemContent ".\Data\PoolsConfigDefault.ps1"
                         if ($Parameters.PoolName) {
-                            $Data = ConvertTo-Json ([PSCustomObject]@{
-                                PoolName = $Parameters.PoolName
-                                Config = $ConfigActual."$($Parameters.PoolName)"
-                                Setup  = $PoolSetup."$($Parameters.PoolName)"
-                            }) -Depth 10 -Compress
+                            if ($Parameters.PoolName -in @("ls","list")) {
+                                $RealConfig = if ($Session.UserConfig) {ConvertFrom-Json $Session.UserConfig} else {$Session.Config}
+                                $Data = ConvertTo-Json @($ConfigActual.PSObject.Properties.Name | Foreach-Object {"$($_)$(if ($_ -in $RealConfig.PoolName) {"*"})"} | Sort-Object -Unique)
+                            } else {
+                                $Data = ConvertTo-Json ([PSCustomObject]@{
+                                    PoolName = $Parameters.PoolName
+                                    Config = $ConfigActual."$($Parameters.PoolName)"
+                                    Setup  = $PoolSetup."$($Parameters.PoolName)"
+                                }) -Depth 10 -Compress
+                            }
                         } else {
                             $Data = ConvertTo-Json ([PSCustomObject]@{
                                 Pools = $ConfigActual
                                 Setup = $PoolSetup
                             }) -Depth 10 -Compress
                         }
-                    } elseif ($ConfigName -eq "PoolNames") {
-                        $RealConfig = if ($Session.UserConfig) {ConvertFrom-Json $Session.UserConfig} else {$Session.Config}
-                        $Data = ConvertTo-Json @($ConfigActual.PSObject.Properties.Name | Sort-Object -Descending {$_ -in $RealConfig.PoolName})
                     } else {
                         $Data = ConvertTo-Json $ConfigActual -Depth 10 -Compress
                     }
                 }
-                if ($ConfigActual -ne $null) {
-                    Remove-Variable "ConfigActual"
-                }
+                if ($ConfigActual -ne $null) {Remove-Variable "ConfigActual"}
+                if ($PoolSetup -ne $null) {Remove-Variable "PoolSetup"}
             }
             Break
         }
         "/saveconfig" {
+            if ($API.LockConfig) {
+                $Data = ConvertTo-Json ([PSCustomObject]@{Success=$false}) -Depth 10
+                Break;
+            }
+
             $ConfigName = if ($Parameters.ConfigName) {$Parameters.ConfigName} else {"Config"}
 
             $ConfigActual = Get-ConfigContent $ConfigName
@@ -299,6 +436,86 @@ While ($APIHttpListener.IsListening -and -not $API.Stop) {
                     }
                 }
             } elseif ($ConfigName -eq "Pools") {
+
+                $PoolName = $Parameters.PoolName
+
+                if ($PoolName -and $ConfigActual.$PoolName) {
+                    $DataSaved = [PSCustomObject]@{}
+
+                    $NewCoin = "$($Parameters.AddNewCoin)".Trim().ToUpper()
+
+                    if ($NewCoin -ne "" -and $ConfigActual.$NewCoin -eq $null) {
+                        $DataSaved | Add-Member $NewCoin "$($Parameters.AddNewCoinWallet.Trim())"
+                        $DataSaved | Add-Member "$($NewCoin)-Params" "$($Parameters.AddNewCoinParams.Trim())"
+
+                        $ConfigActual.$PoolName | Add-Member $NewCoin "$($Parameters.AddNewCoinWallet.Trim())" -Force
+                        $ConfigActual.$PoolName | Add-Member "$($NewCoin)-Params" "$($Parameters.AddNewCoinParams.Trim())" -Force
+                        $ConfigChanged++
+                    }
+
+                    $Parameters.PSObject.Properties.Name | Where-Object {$_ -notmatch "^AddNewCoin" -and ($ConfigActual.$PoolName.$_ -ne $null -or $_ -match "-Params$")} | Foreach-Object {
+                        $Value = $Parameters.$_.Trim()
+
+                        $Type = Switch($_) {
+                            #Common
+                            "Penalty" {"float"}
+                            "MaxAllowedLuck" {"float"}
+                            "MaxMarginOfError" {"float"}
+                            "MaxTimeSinceLastBlock" {"timespan"}
+                            "MaxTimeToFind" {"timespan"}
+                            "SwitchingHysteresis" {"float"}
+
+                            #MiningRigRentals
+                            "PriceBTC" {"float"}
+                            "PriceFactor" {"float"}
+                            "AutoCreateMinProfitPercent" {"float"}
+                            "AutoCreateMinCPUProfitBTC" {"float"}
+                            "MinHours" {"int"}
+                            "MaxHours" {"int"}
+                            "AutoCreateMaxMinHours" {"int"}
+                            "AutoPriceModifierPercent" {"float"}
+                            "AutoUpdateMinPriceChangePercent" {"float"}
+                            "PowerDrawFactor" {"float"}
+                            "AutoExtendTargetPercent" {"float"}
+                            "AutoExtendMaximumPercent" {"float"}
+                            "AutoBonusExtendForHours" {"float"}
+                            "AutoBonusExtendByHours" {"float"}
+                            "PauseBetweenRentals" {"timespan"}
+                            "ExtensionMessageTime" {"timespan"}
+                            "PriceFactorMin" {"float"}
+                            "PriceFactorDecayPercent" {"float"}
+                            "PriceFactorDecayTime" {"timespan"}
+                            "UpdateInterval" {"timespan"}
+
+                            default {
+                                if ($_ -match "^Allow|Enable|Disable") {"bool"}
+                            }
+                        }
+
+                        Switch($Type) {
+                            "bool" {"$([int](Get-Yes $Value))"}
+                            "float" {"$([double]($Value -replace ",","." -replace "[^0-9`-`.]+"))"}
+                            "int" {"$([int]($Value -replace ",","." -replace "[^0-9`-`.]+"))"}
+                            "timespan" {"$($Value -replace ",","." -replace "[^0-9smhdw`.]+"  -replace "([A-Z])[A-Z]+","`$1")"}
+                            default {$Value}
+                        }
+
+                        if ($_ -eq "MaxAllowedLuck" -and $Value) {
+                            $Value = "$($Value/100)"
+                        }
+
+                        if ($ConfigActual.$PoolName.$_ -ne $null) {
+                            if ("$($Value)" -ne "$($ConfigActual.$PoolName.$_)") {
+                                $ConfigActual.$PoolName.$_ = $Value
+                                $DataSaved | Add-Member $_ $Value
+                                $ConfigChanged++
+                            }
+                        } else {
+                            $ConfigActual.$PoolName | Add-Member $_ "$($Value)" -Force
+                            $DataSaved | Add-Member $_ $Value
+                        }
+                    }
+                }
 
             } elseif ($ConfigName -eq "Coins") {
                 $Parameters.Coins | Foreach-Object {
@@ -363,6 +580,43 @@ While ($APIHttpListener.IsListening -and -not $API.Stop) {
             if ($DataSaved)    {Remove-Variable "DataSaved"}
             Break
         }
+        "/loadminerstats" {
+            
+
+            Break
+        }
+        "/saveminerstats" {
+            $Miner = "$(if ($Parameters.MinerName -and $Parameters.MinerName -ne "all") {$Parameters.MinerName -replace "[^A-Za-z0-9]"} else {"all"})"
+            if ($Miner -eq "all" -or $Session.AvailMiners -contains $Miner) {
+                $ZipDate     = Get-Date -Format "yyyy-MM-dd"
+                $ZipFileName = "minerstats-$($Miner)-$($ZipDate).zip"
+                $ZipPath     = Join-Path (Resolve-Path ".\Logs") $ZipFileName
+                $StatsPath   = Join-Path (Resolve-Path ".\Stats\Miners") "*$(if ($Miner -ne "all") {"-$($Miner)-*"})_HashRate.txt"
+                if ($IsWindows) {
+                    $Params = @{
+                        FilePath     = "7z.exe"
+                        ArgumentList = "a `"$($ZipPath)`" `"$($StatsPath)`" -y -tzip"
+                        WindowStyle  = "Hidden"
+                    }
+                } else {
+                    $Params = @{
+                        FilePath     = "7z"
+                        ArgumentList = "a `"$($ZipPath)`" `"$($StatsPath)`" -y -tzip"
+                    }
+                }
+
+                $Params.PassThru = $true
+                (Start-Process @Params).WaitForExit()>$null
+
+                $Data = [System.IO.File]::ReadAllBytes($ZipPath)
+                $ContentType = Get-MimeType ".zip"
+                $ContentFileName = $ZipFileName
+
+                Remove-Item $ZipPath -Force -ErrorAction Ignore
+
+            }
+            Break
+        }
         "/config" {
             $Data = ConvertTo-Json $Session.Config -Depth 10
             Break
@@ -381,6 +635,8 @@ While ($APIHttpListener.IsListening -and -not $API.Stop) {
                             MemoryClockBoost = $_.Value.MemoryClockBoost
                             CoreClockBoost   = $_.Value.CoreClockBoost
                             LockVoltagePoint = $_.Value.LockVoltagePoint
+                            LockMemoryClock  = $_.Value.LockMemoryClock
+                            LockCoreClock    = $_.Value.LockCoreClock
                         }
                     }) -Depth 10
             Break
@@ -486,14 +742,17 @@ While ($APIHttpListener.IsListening -and -not $API.Stop) {
                 }
             } elseif ($IsWindows) {
 
-                if (Test-IsElevated) {
-
-                    try {
-                        Invoke-Expression ".\Includes\pci\lspci.exe" | Select-String "VGA compatible controller" | Tee-Object -Variable lspci | Tee-Object -FilePath ".\Data\gpu-count.txt" | Out-Null
-                    } catch {
-                        if ($Error.Count){$Error.RemoveAt(0)}
+                try {
+                    @(try {
+                        Get-CimInstance CIM_VideoController | Where-Object {
+                            (Get-ItemProperty -path "HKLM:\SYSTEM\CurrentControlSet\Enum\$($_.PNPDeviceID)" -name locationinformation).locationInformation -match "\d+,\d+,\d+"
+                        } | Foreach-Object {"$("{0:X2}:{1:X2}.{2:d}" -f ($Matches[0] -split "," | Foreach-Object {[int]$_})) $(if ($_.AdapterCompatibility -match "Advanced Micro Devices") {"$($Matches[0]) "})$($_.Name)"} | Sort-Object
                     }
-
+                    catch {
+                        if ($Error.Count){$Error.RemoveAt(0)}
+                    }) | Tee-Object -Variable lspci | Tee-Object -FilePath ".\Data\gpu-count.txt" | Out-Null
+                } catch {
+                    if ($Error.Count){$Error.RemoveAt(0)}
                 }
                
                 if ($API.AllDevices | Where-Object {$_.Type -eq "Gpu" -and $_.Vendor -eq "AMD"}) {
@@ -552,23 +811,22 @@ While ($APIHttpListener.IsListening -and -not $API.Stop) {
                 }
             }
 
-            @(".\Data\lscpu.txt", ".\Data\gpu-count.txt", ".\Data\gpu-minerlist.txt", ".\Data\gpu-test.txt", ".\Data\alldevices.json") | Where-Object {Test-Path $_} | Foreach-Object {
+            @(".\Data\lscpu.txt", ".\Data\gpu-count.txt", ".\Data\gpu-minerlist.txt", ".\Data\gpu-test.txt", ".\Data\alldevices.json", ".\Data\sysinfo.json") | Where-Object {Test-Path $_} | Foreach-Object {
                 Copy-Item $_ $DebugPath -ErrorAction Ignore
             }
 
-            if ($IsLinux) {
+            if ($IsWindows) {
                 $Params = @{
-                    FilePath     = "7z"
+                    FilePath     = "7z.exe"
                     ArgumentList = "a `"$($DebugPath).zip`" `"$(Join-Path $DebugPath "*")`" -y -sdel -tzip"
+                    WindowStyle  = "Hidden"
                 }
             } else {
                 $Params = @{
                     FilePath     = "7z"
                     ArgumentList = "a `"$($DebugPath).zip`" `"$(Join-Path $DebugPath "*")`" -y -sdel -tzip"
-                    WindowStyle  = "Hidden"
                 }
             }
-
 
             $Params.PassThru = $true
             (Start-Process @Params).WaitForExit()>$null
@@ -607,8 +865,9 @@ While ($APIHttpListener.IsListening -and -not $API.Stop) {
         }
         "/getdeviceconfig" {
             $Data = if ($API.AllDevices) {
-                $GPUDevices = $API.AllDevices | Where-Object {$_.Type -eq "Gpu" -and $_.Vendor -in @("AMD","NVIDIA")}
-                @(@("CPU") + @($GPUDevices.Vendor | Select-Object -Unique | Sort-Object) + @($GPUDevices.Model | Select-Object -Unique | Sort-Object) + @($GPUDevices.Name | Select-Object -Unique | Sort-Object) | Foreach-Object {[PSCustomObject]@{Name=$_;Selected=$($_ -in $Session.Config.DeviceName);Excluded=$($_ -in $Session.Config.ExcludeDeviceName)}}) | ConvertTo-Json -Depth 10
+                $GPUDevices = $API.AllDevices | Where-Object {$_.Type -eq "Gpu" -and $_.Vendor -in @("AMD","INTEL","NVIDIA")}
+                ConvertTo-Json @(@("CPU") + @($GPUDevices.Vendor | Select-Object -Unique | Sort-Object) + @($GPUDevices.Model | Select-Object -Unique | Sort-Object) + @($GPUDevices.Name | Select-Object -Unique | Sort-Object) | Foreach-Object {[PSCustomObject]@{Name=$_;Selected=$($_ -in $Session.Config.DeviceName);Excluded=$($_ -in $Session.Config.ExcludeDeviceName)}}) -Depth 10
+                if ($GPUDevices -ne $null) {Remove-Variable "GPUDevices"}
             } else {"[]"}
             Break
         }
@@ -705,8 +964,8 @@ While ($APIHttpListener.IsListening -and -not $API.Stop) {
                 $Data = if ($API.Balances) {$API.Balances} else {"[]"}
                 Break
             }
-            if ($API.Balances) {$Balances = ConvertFrom-Json $API.Balances}
-            if ($API.Rates)    {$LocalRates = ConvertFrom-Json $API.Rates}
+            if ($API.Balances) {$Balances = ConvertFrom-Json "$($API.Balances)"}
+            if ($API.Rates)    {$LocalRates = ConvertFrom-Json "$($API.Rates)"}
             $Balances = $Balances | Where-Object {($Parameters.add_total -or $_.Name -notmatch "^\*") -and ($Parameters.add_wallets -or $_.BaseName -ne "Wallet")}
 
             if ($Session.Config.ShowWalletBalances -and $Parameters.add_total -and -not $Parameters.add_wallets) {
@@ -764,7 +1023,7 @@ While ($APIHttpListener.IsListening -and -not $API.Stop) {
                 }
                 if ($Parameters.add_btc) {
                     $Balances | Foreach-Object {
-                        $Rate = $LocalRates."$($_.Currency)"
+                        $Rate = if ($_.Currency) {$LocalRates."$($_.Currency)"} else {0}
                         $_ | Add-Member -NotePropertyMembers @{
                             Total_BTC = [Decimal]$(if ($Rate) {$_.Total / $Rate} else {0})
                             Paid_BTC = [Decimal]$(if ($Rate) {$_.Paid / $Rate} else {0})
@@ -835,15 +1094,24 @@ While ($APIHttpListener.IsListening -and -not $API.Stop) {
             $Data = (Get-Culture).NumberFormat.NumberDecimalSeparator | ConvertTo-Json -Depth 10
             Break
         }
+        "/getminerlog" {
+            $Data = [PSCustomObject]@{Status=$false;Content=""}
+            if ($Parameters.logfile -and ($Parameters.logfile -match "\d+_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.txt$") -and (Test-Path (Join-Path ".\Logs" $Parameters.logfile))) {
+                $Data.Status  = $true
+                $Data.Content = Get-ContentByStreamReader (Join-Path ".\Logs" $Parameters.logfile)
+            }
+            $Data = ConvertTo-Json $Data
+            Break
+        }
         "/minerstats" {
             [hashtable]$JsonUri_Dates = @{}
             [hashtable]$Miners_List = @{}
             [System.Collections.ArrayList]$Out = @()
                     
-            $API.Miners | Where-Object {$_.DeviceModel -notmatch '-' -or $Session.Config.MiningMode -eq "legacy"} | Select-Object BaseName,Name,Path,HashRates,DeviceModel,MSIAprofile,OCprofile,PowerDraw,Ratios | Foreach-Object {
+            $API.Miners | Where-Object {$_.DeviceModel -notmatch '-' -or $Session.Config.MiningMode -eq "legacy"} | Foreach-Object {
                 if (-not $JsonUri_Dates.ContainsKey($_.BaseName)) {
                     $JsonUri = Join-Path (Get-MinerInstPath $_.Path) "_uri.json"
-                    $JsonUri_Dates[$_.BaseName] = if (Test-Path $JsonUri) {(Get-ChildItem $JsonUri -ErrorAction Ignore).LastWriteTime.ToUniversalTime()} else {$null}
+                    $JsonUri_Dates[$_.BaseName] = if (Test-Path $JsonUri) {(Get-ChildItem $JsonUri -ErrorAction Ignore).LastWriteTimeUtc} else {$null}
                 }
                 [String]$Algo = $_.HashRates.PSObject.Properties.Name | Select -First 1
                 [String]$SecondAlgo = ''
@@ -860,7 +1128,7 @@ While ($APIHttpListener.IsListening -and -not $API.Stop) {
                     $Miners_List[$Miners_Key] = $true
                     $Miner_Path = Get-ChildItem "Stats\Miners\*-$($Miners_Key)_HashRate.txt" -ErrorAction Ignore
                     $Miner_Failed = @($_.HashRates.PSObject.Properties.Value) -contains 0 -or @($_.HashRates.PSObject.Properties.Value) -contains $null
-                    $Miner_NeedsBenchmark = $Miner_Path -and $Miner_Path.LastWriteTime.ToUniversalTime() -lt $JsonUri_Dates[$_.BaseName]
+                    $Miner_NeedsBenchmark = $Miner_Path -and $Miner_Path.LastWriteTimeUtc -lt $JsonUri_Dates[$_.BaseName]
                     $Miner_DeviceModel = if ($Session.Config.MiningMode -eq "legacy" -and $_.DeviceModel -match "-") {$API.DevicesToVendors."$($_.DeviceModel)"} else {$_.DeviceModel}
                     if ($Miner_DeviceModel -notmatch "-" -or $Miner_Path) {
                         $Out.Add([PSCustomObject]@{
@@ -878,6 +1146,8 @@ While ($APIHttpListener.IsListening -and -not $API.Stop) {
                             Benchmarking = -not $Miner_Path
                             NeedsBenchmark = $Miner_NeedsBenchmark
                             BenchmarkFailed = $Miner_Failed
+                            Benchmarked = if ($_.Benchmarked) {$_.Benchmarked.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")} else {$null}
+                            LogFile     = "$(if ($_.LogFile -and (Test-Path (Join-Path ".\Logs" $_.LogFile))) {$_.LogFile})"
                         })>$null
                     }
                 }
@@ -987,7 +1257,8 @@ While ($APIHttpListener.IsListening -and -not $API.Stop) {
                                         AsString = "{0:d}.{1:d2}:{2:d2}:{3:d2}" -f ($Timer.Days,$Timer.Hours,$Timer.Minutes,$Timer.Seconds+[int]($Timer.Milliseconds/1000))
                                         Seconds  = [int64]$Timer.TotalSeconds
                                     }
-            $Data  = [PSCustomObject]@{AllProfitBTC=$Profit;ProfitBTC=[decimal]$API.CurrentProfit;Earnings_Avg=[decimal]$API.Earnings_Avg;Earnings_1d=[decimal]$API.Earnings_1d;AllEarnings_Avg=$Earnings_Avg;AllEarnings_1d=$Earnings_1d;Rates=$API.ActualRates;PowerPrice=$API.CurrentPowerPrice;Power=$API.CurrentPower;Uptime=$Uptime;SysUptime=$SysUptime} | ConvertTo-Json -Depth 10
+
+            $Data  = [PSCustomObject]@{AllProfitBTC=$Profit;ProfitBTC=[decimal]$API.CurrentProfit;Earnings_Avg=[decimal]$API.Earnings_Avg;Earnings_1d=[decimal]$API.Earnings_1d;AllEarnings_Avg=$Earnings_Avg;AllEarnings_1d=$Earnings_1d;Rates=$API.ActualRates;PowerPrice=$API.CurrentPowerPrice;Power=$API.CurrentPower;Uptime=$Uptime;SysUptime=$SysUptime;RemoteIP=$API.RemoteIP} | ConvertTo-Json -Depth 10
             Remove-Variable "Timer" -ErrorAction Ignore
             Remove-Variable "Uptime" -ErrorAction Ignore
             Remove-Variable "SysUptime" -ErrorAction Ignore
@@ -1015,9 +1286,9 @@ While ($APIHttpListener.IsListening -and -not $API.Stop) {
         }
         "/pause" {
             if ($Parameters.action -in @("set","reset","pause","unpause")) {
-                $API.Pause = $Parameters.action -in @("set","pause")
+                $API.Pause = ($Parameters.action -in @("set","pause")) -ne $API.PauseMiners.PauseIA
             } else {
-                $API.Pause = -not $API.Pause
+                $API.Pause = $true
             }
             $Data = $API.Pause | ConvertTo-Json
             Break
@@ -1025,6 +1296,20 @@ While ($APIHttpListener.IsListening -and -not $API.Stop) {
         "/lockminers" {
             $API.LockMiners = -not $API.LockMiners
             $Data = $API.LockMiners | ConvertTo-Json
+            Break
+        }
+        "/resetworkers" {
+            if ($Session.Config.MinerStatusKey -match "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$") {
+                $Result = Invoke-GetUrl "https://rbminer.net/api/reset_workers.php?user=$($Session.Config.MinerStatusKey)" -timeout 10
+                if ($Result.status) {
+                    $Data = "The signal to delete all offline workers was successfully sent to rbminer.net."
+                } else {
+                    $Data = "Failed to send reset signal to rbminer.net."
+                }
+                if ($Result) {Remove-Variable "Result"}
+            } else {
+                $Data = "No valid MinerStatusKey found in config.txt"
+            }
             Break
         }
         "/applyoc" {
@@ -1053,7 +1338,7 @@ While ($APIHttpListener.IsListening -and -not $API.Stop) {
             Break
         }
         "/status" {
-            $Data = [PSCustomObject]@{Pause=$API.Pause;LockMiners=$Session.LockMiners;IsExclusiveRun=$Session.IsExclusiveRun;IsDonationRun=$Session.IsDonationRun} | ConvertTo-Json -Depth 10
+            $Data = [PSCustomObject]@{Pause=$API.PauseMiners.Pause;PauseIAOnly=$API.PauseMiners.PauseIAOnly;LockMiners=$Session.LockMiners;IsExclusiveRun=$Session.IsExclusiveRun;IsDonationRun=$Session.IsDonationRun} | ConvertTo-Json -Depth 10
             Break
         }
         "/clients" {
@@ -1115,7 +1400,7 @@ While ($APIHttpListener.IsListening -and -not $API.Stop) {
                 $Parameters.config -split ',' | Where-Object {$_} | Foreach-Object {
                     $GetConfigA = @($_ -split 'ZZZ' | Select-Object)
                     if ($PathToFile = Get-ConfigPath -ConfigName $GetConfigA[0] -WorkerName $Parameters.workername -GroupName $Parameters.groupname) {
-                        $ConfigLwt = Get-UnixTimestamp (Get-ChildItem $PathToFile).LastWriteTime.ToUniversalTime()
+                        $ConfigLwt = Get-UnixTimestamp (Get-ChildItem $PathToFile).LastWriteTimeUtc
                         $GetConfigNew = ($GetConfigA.Count -lt 2) -or ([int]$GetConfigA[1] -lt $ConfigLwt)
                         $Result | Add-Member $GetConfigA[0] ([PSCustomObject]@{
                                                     isnew = $GetConfigNew
@@ -1173,7 +1458,7 @@ While ($APIHttpListener.IsListening -and -not $API.Stop) {
                         } catch {if ($Error.Count){$Error.RemoveAt(0)}}
                     }
                     if ($EnableFixBigInt) {
-                        $Result = Invoke-GetUrlAsync $Parameters.url -method $Parameters.method -cycletime $Parameters.cycletime -retry $Parameters.retry -retrywait $Parameters.retrywait -tag $Parameters.tag -delay $Parameters.delay -timeout $Parameters.timeout -body $pbody -headers $pheaders -jobkey $Parameters.jobkey -fixbigint $Parameters.fixbigint
+                        $Result = Invoke-GetUrlAsync $Parameters.url -method $Parameters.method -cycletime $Parameters.cycletime -retry $Parameters.retry -retrywait $Parameters.retrywait -tag $Parameters.tag -delay $Parameters.delay -timeout $Parameters.timeout -body $pbody -headers $pheaders -jobkey $Parameters.jobkey -fixbigint $(Get-Yes $Parameters.fixbigint)
                     } else {
                         $Result = Invoke-GetUrlAsync $Parameters.url -method $Parameters.method -cycletime $Parameters.cycletime -retry $Parameters.retry -retrywait $Parameters.retrywait -tag $Parameters.tag -delay $Parameters.delay -timeout $Parameters.timeout -body $pbody -headers $pheaders -jobkey $Parameters.jobkey
                     }
@@ -1209,7 +1494,26 @@ While ($APIHttpListener.IsListening -and -not $API.Stop) {
                     if ($Parameters.key -and $Parameters.secret) {
                         $Params = [hashtable]@{}
                         ($Parameters.params | ConvertFrom-Json -ErrorAction Ignore).PSObject.Properties | Where-Object MemberType -eq "NoteProperty" | Foreach-Object {$Params[$_.Name] = $_.Value}
-                        $Result = Invoke-MiningRigRentalRequest $Parameters.endpoint $Parameters.key $Parameters.secret -method $Parameters.method -params $Params -Timeout $Parameters.Timeout -Cache 30 -nonce $Parameters.nonce -Raw
+
+                        $regex = "$($Parameters.regex)"
+                        $regexfld = "$($Parameters.regexfld)"
+                        $regexmatch = Get-Yes $Parameters.regexmatch
+                        $cycletime = [int]$Parameters.cycletime
+                        $nonce     = [int]$Parameters.nonce
+
+                        if (-not $nonce -and $cycletime -and (Test-Path Variable:Global:AsyncLoader) -and $AsyncLoader.Timestamp -and ($AsyncLoader.Timestamp -gt (Get-Date).ToUniversalTime().AddMinutes(-10))) {
+                            $Result = Invoke-MiningRigRentalRequestAsync $Parameters.endpoint $Parameters.key $Parameters.secret -method $Parameters.method -params $Params -Timeout $Parameters.Timeout -cycletime $cycletime -retry $Parameters.retry -retrywait $Parameters.retrywait -Raw
+                            if ($regexfld -and $regex -and $Result.data) {
+                                if ($regexmatch) {
+                                    $Result.data = $Result.data | Where-Object {$_.$regexfld -match $regex}
+                                } else {
+                                    $Result.data = $Result.data | Where-Object {$_.$regexfld -notmatch $regex}
+                                }
+                            }
+                        } else {
+                            $Result = Invoke-MiningRigRentalRequest $Parameters.endpoint $Parameters.key $Parameters.secret -method $Parameters.method -params $Params -Timeout $Parameters.Timeout -nonce $nonce -regexfld $regexfld -regex $regex -regexmatch $regexmatch -Raw -Cache $(if ($cycletime) {30} else {0})
+                        }
+
                         $Status = $true
                     }
                 } catch {if ($Error.Count){$Error.RemoveAt(0)}}
@@ -1337,29 +1641,30 @@ While ($APIHttpListener.IsListening -and -not $API.Stop) {
                     }
                     $AllRigs_Request | Foreach-Object {
                         $Rig = $_
-                        $Pool_Data = $Pool_Request | Where-Object {$_.name -eq $Rig.type}
-                        $Algo  = Get-MiningRigRentalAlgorithm $_.type
-                        $Speed = [Double]$StatsCPU[$Algo] + [Double]$StatsGPU[$Algo]
-                        $Mrr_Data.Add([PSCustomObject]@{
-                            Algorithm = $Algo
-                            Title     = $Pool_Data.display
-                            SuggPrice = $Pool_Data.suggested_price.amount
-                            LastPrice = $Pool_Data.stats.prices.last.amount
-                            RigsPrice = [double]$Rig.hashrate.advertised.hash*[double]$Rig.price.BTC.price
-                            Unit      = $Pool_Data.hashtype.ToUpper()
-                            Hot       = $Pool_Data.hot
-                            RigsAvail = $Pool_Data.stats.available.rigs
-                            RigsRented= $Pool_Data.stats.rented.rigs
-                            Price     = $Rig.price.BTC.price
-                            MinPrice  = $Rig.price.BTC.minimum
-                            Modifier  = $Rig.price.BTC.modifier
-                            Multiplier= Get-MiningRigRentalsDivisor $Rig.price.type
-                            PriceData = $Rig.price
-                            MinHours  = $Rig.minhours
-                            MaxHours  = $Rig.maxhours
-                            HashRate  = $Speed
-                            HashRateAdv = $Rig.hashrate.advertised.hash * (Get-MiningRigRentalsDivisor $Rig.hashrate.advertised.type)
-                        }) > $null
+                        if ($Pool_Data = $Pool_Request | Where-Object {$_.name -eq $Rig.type}) {
+                            $Algo  = Get-MiningRigRentalAlgorithm $_.type
+                            $Speed = [Double]$StatsCPU[$Algo] + [Double]$StatsGPU[$Algo]
+                            $Mrr_Data.Add([PSCustomObject]@{
+                                Algorithm = $Algo
+                                Title     = $Pool_Data.display
+                                SuggPrice = $Pool_Data.suggested_price.amount
+                                LastPrice = $Pool_Data.stats.prices.last.amount
+                                RigsPrice = [double]$Rig.hashrate.advertised.hash*[double]$Rig.price.BTC.price
+                                Unit      = "$($Pool_Data.hashtype)".ToUpper()
+                                Hot       = $Pool_Data.hot
+                                RigsAvail = $Pool_Data.stats.available.rigs
+                                RigsRented= $Pool_Data.stats.rented.rigs
+                                Price     = $Rig.price.BTC.price
+                                MinPrice  = $Rig.price.BTC.minimum
+                                Modifier  = $Rig.price.BTC.modifier
+                                Multiplier= Get-MiningRigRentalsDivisor $Rig.price.type
+                                PriceData = $Rig.price
+                                MinHours  = $Rig.minhours
+                                MaxHours  = $Rig.maxhours
+                                HashRate  = $Speed
+                                HashRateAdv = $Rig.hashrate.advertised.hash * (Get-MiningRigRentalsDivisor $Rig.hashrate.advertised.type)
+                            }) > $null
+                        }
                     }
                     Remove-Variable "StatsCPU"
                     Remove-Variable "StatsGPU"
@@ -1377,6 +1682,7 @@ While ($APIHttpListener.IsListening -and -not $API.Stop) {
                     [PSCustomObject]@{
                         Name = $_.Name
                         PriceFactor = $_.PriceFactor
+                        Algorithms = $_.Algorithms
                         LastReset = "$(([datetime]$_.LastReset).ToString("yyyy-MM-dd HH:mm:ss"))"
                     }
                 }
@@ -1461,7 +1767,7 @@ While ($APIHttpListener.IsListening -and -not $API.Stop) {
     } catch {
         if ($Error.Count){$Error.RemoveAt(0)}
         if ($Session.Config.LogLevel -ne "Silent") {
-            Write-ToFile -FilePath "Logs\errors_$(Get-Date -Format "yyyy-MM-dd").api.txt" -Message "Response not sent: $($_.Exception.Message)" -Append -Timestamp
+            Write-ToFile -FilePath "Logs\errors_$(Get-Date -Format "yyyy-MM-dd").api.txt" -Message "[$ThreadID] Response to $($Path) not sent: $($_.Exception.Message)" -Append -Timestamp
         }
     }
 
@@ -1471,13 +1777,13 @@ While ($APIHttpListener.IsListening -and -not $API.Stop) {
     } catch {
         if ($Error.Count){$Error.RemoveAt(0)}
         if ($Session.Config.LogLevel -ne "Silent") {
-            Write-ToFile -FilePath "Logs\errors_$(Get-Date -Format "yyyy-MM-dd").api.txt" -Message "Close response failed: $($_.Exception.Message)" -Append -Timestamp
+            Write-ToFile -FilePath "Logs\errors_$(Get-Date -Format "yyyy-MM-dd").api.txt" -Message "[$ThreadID] Close response to $($Path) failed: $($_.Exception.Message)" -Append -Timestamp
         }
     }
 
     if ($Error.Count) {
         if ($Session.Config.LogLevel -ne "Silent") {
-            $Error | Foreach-Object {Write-ToFile -FilePath "Logs\errors_$(Get-Date -Format "yyyy-MM-dd").api.txt" -Message "$($_.Exception.Message)" -Append -Timestamp}
+            $Error | Foreach-Object {Write-ToFile -FilePath "Logs\errors_$(Get-Date -Format "yyyy-MM-dd").api.txt" -Message "[$ThreadID] Error during $($Path): $($_.Exception.Message)" -Append -Timestamp}
         }
         $Error.Clear()
     }

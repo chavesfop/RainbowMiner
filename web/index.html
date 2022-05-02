@@ -1,6 +1,6 @@
 ﻿<!--#include file="/parts/head.html" -->
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-    <h1 id="title" data-navbaractive="navdashboard" class="h2">Dashboard</h1>
+    <h1 id="title" data-navbaractive="navdashboard" class="h2">Dashboard</h1><span id="country--data"></span><span id="country--flag"></span>
 </div>
 
 <h3 id="h-miners" class="h-selector">Running Miners on <span class="workername"></span> <a href="#" id="pauseminers" class="btn btn-primary">Pause / Restart</a> <a href="#" id="lockminers" class="btn btn-primary">Lock / Unlock</a> <a href="#" id="reboot" class="btn btn-danger">Reboot</a></h3>
@@ -28,7 +28,8 @@
             <th data-field="tPrimaryAlgorithm" data-sortable="true" data-filter-control="select" data-filter-strict-search="true">Algo</th>
             <th data-field="tPrimaryHashRateLive" data-sortable="true" data-formatter="formatHashRateValue">Speed</th>
             <th data-field="tPrimaryHashRate" data-sortable="true" data-formatter="formatHashRateValue" data-filter-stric-search="true">Benched</th>
-            <th data-field="tPrimaryShares" data-align="right">Acc/Rej</th>
+            <th data-field="tPrimaryShares" data-align="right">A/R/S</th>
+            <th data-field="tPrimaryBLK" data-sortable="true" data-formatter="formatBLK" data-align="right">TTF</th>
             <th data-field="tActive" data-align="right" data-sortable="true" data-sorter="sortRunningMinersByActive">Active</th>
             <th data-field="tDonator" data-sortable="true">Mines</th>
         </tr>
@@ -36,7 +37,7 @@
 </table>
 
 <div id="remoteworkersandminers">
-    <h3 class="mt-4 h-selector" id="h-remoteworkers">Remote Workers</h3>
+    <h3 class="mt-4 h-selector" id="h-remoteworkers">Remote Workers <a href="#" id="resetworkers" class="btn btn-primary">Delete Offline Workers</a></h3>
     <table id="remoteworkers" class="table mb-4"
            data-toggle="table"
            data-url="/remoteminers"
@@ -91,6 +92,7 @@
                 <th data-field="tPrimaryHashRateLive" data-sortable="true" data-formatter="formatHashRateValue">Speed</th>
                 <th data-field="tPrimaryHashRate" data-sortable="true" data-formatter="formatHashRateValue" data-filter-stric-search="true">Benched</th>
                 <th data-field="tPrimaryShares" data-align="right">Acc/Rej</th>
+                <th data-field="tPrimaryBLK" data-sortable="true" data-formatter="formatBLK" data-align="right">TTF</th>
                 <th data-field="tActive" data-align="right" data-sortable="true" data-sorter="sortRemoteMinersByActive">Active</th>
                 <th data-field="tDonator" data-sortable="true">Mines</th>
             </tr>
@@ -196,6 +198,17 @@ $(function () {
         $.ajax({
             url: '/lockminers', success: function (result) {
                 $("#lockminers").html(result ? "Unlock" : "Lock");
+            }
+        })
+    });
+
+    $("#resetworkers").click(function (event) {
+        event.stopPropagation()
+        $.ajax({
+            url: '/resetworkers', success: function (result) {
+                $('.modal-body').text(result);
+                $('.modal-title').text('Reset Workers');
+                $('#myModal').modal({ show: true });
             }
         })
     });
@@ -411,11 +424,11 @@ function formatRunningMiners(data) {
         item.tPrimaryShares = "- / -";
         item.tSecondaryShares = "- / -";
         if (Array.isArray(item.Stratum) && item.Stratum.length) {
-            item.tPrimaryShares = (typeof item.Stratum[0].Accepted !== "undefined"? item.Stratum[0].Accepted : '-') + ' / ' + (typeof item.Stratum[0].Rejected !== "undefined"? item.Stratum[0].Rejected : '-')
+            item.tPrimaryShares = (typeof item.Stratum[0].Accepted !== "undefined"? item.Stratum[0].Accepted : '-') + '/' + (typeof item.Stratum[0].Rejected !== "undefined"? item.Stratum[0].Rejected : '-')+ '/' + (typeof item.Stratum[0].Stale !== "undefined"? item.Stratum[0].Stale : '-')
             if (item.Stratum.length > 1)
-                item.tSecondaryShares = (typeof item.Stratum[1].Accepted !== "undefined"? item.Stratum[1].Accepted : '-') + ' / ' + (typeof item.Stratum[1].Rejected !== "undefined"? item.Stratum[1].Rejected : '-')
+                item.tSecondaryShares = (typeof item.Stratum[1].Accepted !== "undefined"? item.Stratum[1].Accepted : '-') + '/' + (typeof item.Stratum[1].Rejected !== "undefined"? item.Stratum[1].Rejected : '-') + '/' + (typeof item.Stratum[1].Stale !== "undefined"? item.Stratum[1].Stale : '-')
         } else if (typeof item.Stratum !== "undefined") {
-            item.tPrimaryShares = (typeof item.Stratum.Accepted !== "undefined"? item.Stratum.Accepted : '-') + ' / ' + (typeof item.Stratum.Rejected !== "undefined"? item.Stratum.Rejected : '-')
+            item.tPrimaryShares = (typeof item.Stratum.Accepted !== "undefined"? item.Stratum.Accepted : '-') + '/' + (typeof item.Stratum.Rejected !== "undefined"? item.Stratum.Rejected : '-') + '/' + (typeof item.Stratum.Stale !== "undefined"? item.Stratum.Stale : '-')
         }
 
         if (Array.isArray(item.Speed_Live)) {
@@ -423,6 +436,13 @@ function formatRunningMiners(data) {
             item.tSecondaryHashRateLive = item.Speed_Live[1];
         } else {
             item.tPrimaryHashRateLive = item.Speed_Live;
+        }
+
+        if (Array.isArray(item.BLK)) {
+            item.tPrimaryBLK = item.BLK[0];
+            item.tSecondaryBLK = item.BLK[1];
+        } else {
+            item.tPrimaryBLK = item.BLK;
         }
 
         item.tProfit = typeof item.Profit == "undefined"? 0 : Number(item.Profit);
@@ -580,6 +600,13 @@ function formatRemoteMiners(data) {
                 item.tSecondaryShares = (typeof item.Accepted[1] !== "undefined"? item.Accepted[1] : '-') + ' / ' + (typeof item.Rejected[1] !== "undefined"? item.Rejected[1] : '-')
         } else if (typeof item.Accepted !== "undefined") {
             item.tPrimaryShares = (typeof item.Accepted !== "undefined"? item.Accepted : '-') + ' / ' + (typeof item.Rejected !== "undefined"? item.Rejected : '-')
+        }
+
+        if (Array.isArray(item.BLK)) {
+            item.tPrimaryBLK = item.BLK[0];
+            item.tSecondaryBLK = item.BLK[1];
+        } else {
+            item.tPrimaryBLK = item.BLK;
         }
 
         item.tProfit = item.Profit == "undefined"? 0 : Number(item.Profit);

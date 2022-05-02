@@ -11,14 +11,17 @@ param(
     [Bool]$AllowZero = $false,
     [String]$StatAverage = "Minute_10",
     [String]$StatAverageStable = "Week",
+    [Array]$CoinSymbol = @(),
     [alias("UserName")]
     [String]$User = "",
+    [String]$API_Key = "",
+    [Bool]$EnableAPIKeyForMiners = $false,
     [String]$PPMode = "pps"
 )
 
 $Name = Get-Item $MyInvocation.MyCommand.Path | Select-Object -ExpandProperty BaseName
 
-if (-not $User -and -not $InfoOnly) {return}
+$AllowZero = $true
 
 $Pool_Request = [PSCustomObject]@{}
 $PoolCoins_Request = [PSCustomObject]@{}
@@ -48,7 +51,6 @@ if ($PoolCoins_Request.code -ne 200) {
 }
 
 [hashtable]$Pool_Algorithms = @{}
-[hashtable]$Pool_Coins = @{}
 [hashtable]$Pool_RegionsTable = @{}
 
 $Pool_Host = "prohashing.com"
@@ -56,25 +58,29 @@ $Pool_Host = "prohashing.com"
 $Pool_Regions = @("us","eu")
 $Pool_Regions | Foreach-Object {$Pool_RegionsTable.$_ = Get-Region $_}
 
-if ($PPMode) {$Pool_PPMode = $PPMode}
-else {
-    $Pool_PPMode = if ($User -match "@(pps|fpps|pplns|solo)") {
-        $User = $User -replace "@$($Matches[1])"
-        $Matches[1] -replace "f"
-    } else {
-        "pps"
-    }
-}
+$Pool_APIKey = "$(if ($EnableAPIKeyForMiners -and $API_Key) {",k=$($API_Key)"})"
 
-$PoolCoins_Request.data.PSObject.Properties | Where-Object {$_.Value.port -and $_.Value.enabled -and $_.Value.lastblock} | ForEach-Object {
+$PoolCoins_Request.data.PSObject.Properties | Where-Object {$_.Value.port -and $_.Value.enabled -and $_.Value.lastblock -and ($Wallets."$($_.Name)" -or ($User -ne "" -and $CoinSymbol -contains $_.Name) -or $InfoOnly)} | ForEach-Object {
     $Pool_CoinSymbol = $_.Name
     $Pool_CoinName   = $_.Value.name
     $Pool_Port       = $_.Value.port
     $Pool_Algorithm  = $_.Value.algo
-    $Pool_PoolFee    = [double]$Pool_Request.data.$Pool_Algorithm."$($Pool_PPMode)_fee" * 100
     $Pool_Factor     = [double]$Pool_Request.data.$Pool_Algorithm.mbtc_mh_factor
     $Pool_TSL        = [int]$_.Value.timesincelast
     $Pool_BLK        = [int]$_.Value."24h_blocks"
+    $Pool_Workers    = [int]$_.Value.workers
+    $Pool_User       = if ($Wallets.$Pool_CoinSymbol) {$Wallets.$Pool_CoinSymbol} else {$User}
+
+    $Pool_PPMode = if ($Pool_User -match "@(pps|fpps|pplns|solo)") {
+                        $Pool_User = $Pool_User -replace "@$($Matches[1])"
+                        $Matches[1] -replace "f"
+                    } elseif ($PPMode) {
+                        $PPMode
+                    } else {
+                        "pps"
+                    }
+
+    $Pool_PoolFee    = [double]$Pool_Request.data.$Pool_Algorithm."$($Pool_PPMode)_fee" * 100
 
     if ($Pool_Factor -le 0) {
         Write-Log -Level Info "$($Name): Unable to determine divisor for algorithm $Pool_Algorithm. "
@@ -90,7 +96,10 @@ $PoolCoins_Request.data.PSObject.Properties | Where-Object {$_.Value.port -and $
     }
 
     foreach($Pool_Region in $Pool_Regions) {
-        $Pool_Params = if ($Params.$Pool_CoinSymbol) {",$($Params.$Pool_CoinSymbol)"}
+        $Pool_Params = if ($Params.$Pool_CoinSymbol) {
+            $Pool_ParamsCurrency = "$(if ($Pool_APIKey) {$Params.$Pool_CoinSymbol -replace "k=[0-9a-f]+" -replace ",+","," -replace "^,+" -replace ",+$"} else {$Params.$Pool_CoinSymbol})"
+            if ($Pool_ParamsCurrency) {",$($Pool_ParamsCurrency)"}
+        }
         [PSCustomObject]@{
             Algorithm     = $Pool_Algorithm_Norm
             Algorithm0    = $Pool_Algorithm_Norm
@@ -103,15 +112,16 @@ $PoolCoins_Request.data.PSObject.Properties | Where-Object {$_.Value.port -and $
             Protocol      = "stratum+tcp"
             Host          = "$(if ($Pool_Region -eq "eu") {"eu."})$Pool_Host"
             Port          = $Pool_Port
-            User          = $User
-            Pass          = "a=$($_),c=$($Pool_CoinName.ToLower()),n={workername:$Worker}$(if ($Pool_PPMode -ne "pps") {",m=$($Pool_PPMode)"}){diff:,d=`$difficulty}$Pool_Params"
+            User          = $Pool_User
+            Pass          = "a=$($Pool_Algorithm),c=$($Pool_CoinName.ToLower()),n={workername:$Worker}$(if ($Pool_PPMode -ne "pps") {",m=$($Pool_PPMode)"}){diff:,d=`$difficulty}$Pool_Params"
             Region        = $Pool_RegionsTable.$Pool_Region
             SSL           = $false
             Updated       = $Stat.Updated
             PoolFee       = $Pool_PoolFee
+            PaysLive      = $PPMode -eq "pps"
             DataWindow    = $DataWindow
             Hashrate      = $Stat.HashRate_Live
-            Workers       = $null
+            Workers       = $Pool_Workers
             BLK           = $Stat.BlockRate_Average
             TSL           = $Pool_TSL
             WTM           = $true
@@ -121,9 +131,10 @@ $PoolCoins_Request.data.PSObject.Properties | Where-Object {$_.Value.port -and $
             PenaltyFactor = 1
             Disabled      = $false
             HasMinerExclusions = $false
+            Price_0       = 0.0
             Price_Bias    = 0.0
             Price_Unbias  = 0.0
-            Wallet        = $User
+            Wallet        = $Pool_User
             Worker        = "{workername:$Worker}"
             Email         = $Email
         }
